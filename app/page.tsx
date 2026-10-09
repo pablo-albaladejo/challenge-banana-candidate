@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import type { Person } from '../src/types';
 type AnyRecord = Record<string, any>;
@@ -298,7 +299,7 @@ export default function Home() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <a className="brand" href="/" aria-label="Banana Bank home">
+        <Link className="brand" href="/" aria-label="Banana Bank home">
           <span className="brand-symbol" aria-hidden="true">
             <svg width="28" height="28" viewBox="0 0 32 32">
               <path d="M25 4c1 13-7 22-20 20 6 9 25 1 23-16Z" fill="currentColor" />
@@ -306,7 +307,7 @@ export default function Home() {
             </svg>
           </span>
           banana<span className="brand-dot">.</span>
-        </a>
+        </Link>
         <div className="workspace-label">{operator ? 'CUSTOMER SUPPORT' : 'PERSONAL BANKING'}</div>
         <nav>
           {nav.map(([id, icon, label]) => (

@@ -18,17 +18,17 @@ Banana Bank technical challenge starter: a fictional bank's AI assistant built o
 
 ## Key Files
 
-| File               | Description                                                                                                                                        |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `package.json`     | Scripts (`setup`, `dev`, `reset`, `ingest`, `scenario`, `doctor`, `typecheck`, `test`, `format`, `format:check`, `build`, `start`) and pinned deps |
-| `README.md`        | Quick start, commands, project map, troubleshooting                                                                                                |
-| `.env.example`     | Env template: OpenAI key/models, ports, `BANK_URL`, service/admin/session secrets                                                                  |
-| `next.config.ts`   | Marks `better-sqlite3` as a server external package; disables `X-Powered-By`                                                                       |
-| `tsconfig.json`    | TypeScript configuration                                                                                                                           |
-| `.nvmrc`           | Node 24 (minimum `>=24.0.0`)                                                                                                                       |
-| `.prettierrc.json` | Prettier formatting rules                                                                                                                          |
-| `TESTING.md`       | Testing conventions (colocation, describe/it, AAA, TDD) — mandatory for every test                                                                 |
-| `CLAUDE.md`        | Imports this file                                                                                                                                  |
+| File               | Description                                                                                                                                                            |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `package.json`     | Scripts (`setup`, `dev`, `reset`, `ingest`, `scenario`, `doctor`, `typecheck`, `test`, `format`, `format:check`, `lint`, `test:e2e`, `build`, `start`) and pinned deps |
+| `README.md`        | Quick start, commands, project map, troubleshooting                                                                                                                    |
+| `.env.example`     | Env template: OpenAI key/models, ports, `BANK_URL`, service/admin/session secrets                                                                                      |
+| `next.config.ts`   | Marks `better-sqlite3` as a server external package; disables `X-Powered-By`                                                                                           |
+| `tsconfig.json`    | TypeScript configuration                                                                                                                                               |
+| `.nvmrc`           | Node 24 (minimum `>=24.0.0`)                                                                                                                                           |
+| `.prettierrc.json` | Prettier formatting rules                                                                                                                                              |
+| `TESTING.md`       | Testing conventions (colocation, describe/it, AAA, TDD) — mandatory for every test                                                                                     |
+| `CLAUDE.md`        | Imports this file                                                                                                                                                      |
 
 ## Subdirectories
 
@@ -59,7 +59,8 @@ Banana Bank technical challenge starter: a fictional bank's AI assistant built o
 
 - **All tests follow `TESTING.md` — read it before writing or touching any test.** In short: the test file sits next to the file it tests (`x.ts` → `x.test.ts`); `describe` per module/function; one `it('should <positive functional outcome>')` per case; every body split by `// Arrange`, `// Act`, `// Assert` (`// Act & Assert` for `assert.throws`/`rejects`); no `skip`/`only`/`todo`. TDD: failing test first, confirm it fails for the right reason, then fix.
 - `npm run typecheck` (runs `next typegen` first) and `npm test` (node:test over every colocated `*.test.ts` in `app/`, `src/`, `simulator/`, with `tests/setup.ts` preloaded).
-- `npm run format:check` must pass; `npm run format` applies Prettier (`.prettierignore` skips `fixtures/`, `docs/`, `README.md`). No linter or CI exists.
+- `npm run test:e2e`: Playwright journeys in `app/page.e2e.ts` against an isolated stack (`playwright.config.ts`: ports 3100/4101, fake model on 4102, `.e2e/data`, and `NEXT_DIST_DIR=.next-e2e` because Next 16 locks one dev server per output dir).
+- `npm run format:check` must pass; `npm run format` applies Prettier (`.prettierignore` skips `fixtures/`, `docs/`, `README.md`). `npm run lint` runs ESLint (`eslint.config.mjs`: Next core-web-vitals + TypeScript; `any` warns in source, allowed in tests; `simulator/` ignored). No CI; Husky hooks are the gate: `pre-commit` runs `lint` + `format:check` + `typecheck`, `pre-push` runs `npm test` + `npm run test:e2e`. Do not bypass them with `--no-verify`.
 - Add checks that support your improvements; public tests are not a readiness certificate.
 - Reproduce bank failures with `npm run scenario -- normal | intermittent 17 | lost-response` while the bank runs.
 - After ingestion changes run `npm run ingest`; after a reset, ingest again.
