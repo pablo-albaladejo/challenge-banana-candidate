@@ -16,6 +16,7 @@ Explain your idea, why it is useful and how to try it in the application.
 ## Supporting materials
 
 - Complete AI sessions: `ai-sessions/` (or an optional `ai-sessions.zip` stored here).
+- Production readiness review (pending findings, prioritised): `production-readiness.md`.
 - Video demonstration or alternative document/presentation:
 - What is finished and what remains pending:
 
