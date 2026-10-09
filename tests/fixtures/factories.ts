@@ -5,6 +5,7 @@
 import { Factory } from 'rosie';
 import { faker } from '@faker-js/faker';
 import { appDb } from '../../src/db';
+import type { IntentRow, NewIntent } from '../../src/persistence/intents';
 import type {
   Chunk,
   DocumentRecord,
@@ -77,25 +78,36 @@ export const intentFactory = new Factory<Intent>()
   .attr('error', null)
   .attr('createdAt', () => new Date().toISOString());
 
+/** The intent as the repository stores it: the payload serialised to JSON. */
+export const storedIntent = (intent: Intent): NewIntent => ({
+  ...intent,
+  payload: JSON.stringify(intent.payload),
+});
+
+/** The `intents` row the intent reads back as, with its SQLite column names. */
+export const intentRowOf = (intent: Intent): IntentRow => ({
+  id: intent.id,
+  user_id: intent.userId,
+  conversation_id: intent.conversationId,
+  run_id: intent.runId,
+  payload: JSON.stringify(intent.payload),
+  status: intent.status,
+  bank_reference: intent.bankReference,
+  operation_id: intent.operationId,
+  error: intent.error,
+  created_at: intent.createdAt,
+});
+
 /** Builds an intent and stores it, as transferMoney does before it dispatches to the bank. */
 export function persistIntent(attributes: Partial<Intent> = {}): Intent {
   const intent = intentFactory.build(attributes);
+  // Raw SQL on purpose: the harness is an oracle and never calls src/persistence (tests/AGENTS.md).
+  const row = intentRowOf(intent);
   appDb()
     .prepare(
-      'INSERT INTO intents(id,user_id,conversation_id,run_id,payload,status,bank_reference,operation_id,error,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',
+      `INSERT INTO intents(${Object.keys(row).join(',')}) VALUES(${Object.keys(row).map((k) => `@${k}`).join(',')})`,
     )
-    .run(
-      intent.id,
-      intent.userId,
-      intent.conversationId,
-      intent.runId,
-      JSON.stringify(intent.payload),
-      intent.status,
-      intent.bankReference,
-      intent.operationId,
-      intent.error,
-      intent.createdAt,
-    );
+    .run(row);
   return intent;
 }
 

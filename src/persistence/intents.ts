@@ -1,4 +1,4 @@
-import { appDb } from '../db';
+import { statement } from './statement';
 export type IntentRow = {
   id: string;
   user_id: string;
@@ -42,35 +42,33 @@ const values = (i: NewIntent) => [
   i.createdAt,
 ];
 export function insertIntent(i: NewIntent) {
-  appDb()
-    .prepare(`INSERT INTO intents(${columns}) VALUES(?,?,?,?,?,?,?,?,?,?)`)
-    .run(...values(i));
+  statement(`INSERT INTO intents(${columns}) VALUES(?,?,?,?,?,?,?,?,?,?)`).run(...values(i));
 }
 /** Stores the intent unless one with the same id exists; returns how many rows it wrote. */
 export function insertIntentIfAbsent(i: NewIntent) {
-  return appDb()
-    .prepare(`INSERT OR IGNORE INTO intents(${columns}) VALUES(?,?,?,?,?,?,?,?,?,?)`)
-    .run(...values(i)).changes;
+  return statement(`INSERT OR IGNORE INTO intents(${columns}) VALUES(?,?,?,?,?,?,?,?,?,?)`).run(
+    ...values(i),
+  ).changes;
 }
 export function intentById(id: string) {
-  return appDb().prepare('SELECT * FROM intents WHERE id=?').get(id) as IntentRow | undefined;
+  return statement('SELECT * FROM intents WHERE id=?').get(id) as IntentRow | undefined;
 }
 /** The intent, only when `userId` owns it. */
 export function intentOf(id: string, userId: string) {
-  return appDb().prepare('SELECT * FROM intents WHERE id=? AND user_id=?').get(id, userId) as
+  return statement('SELECT * FROM intents WHERE id=? AND user_id=?').get(id, userId) as
     IntentRow | undefined;
 }
 /** A conversation's intents, oldest first. */
 export function intentsIn(conversationId: string) {
-  return appDb()
-    .prepare('SELECT * FROM intents WHERE conversation_id=? ORDER BY created_at')
-    .all(conversationId) as IntentRow[];
+  return statement('SELECT * FROM intents WHERE conversation_id=? ORDER BY created_at').all(
+    conversationId,
+  ) as IntentRow[];
 }
 /** Intents of a conversation whose outcome the bank has not confirmed (`unknown`, `failed`). */
 export function unsettledIntentIds(conversationId: string) {
-  return appDb()
-    .prepare("SELECT id FROM intents WHERE conversation_id=? AND status IN ('unknown','failed')")
-    .all(conversationId) as { id: string }[];
+  return statement(
+    "SELECT id FROM intents WHERE conversation_id=? AND status IN ('unknown','failed')",
+  ).all(conversationId) as { id: string }[];
 }
 /** Writes only the given fields of the intent; returns how many rows changed. */
 export function updateIntent(id: string, fields: IntentFields) {
@@ -78,7 +76,8 @@ export function updateIntent(id: string, fields: IntentFields) {
     (k) => k in fields,
   );
   if (!keys.length) return 0;
-  return appDb()
-    .prepare(`UPDATE intents SET ${keys.map((k) => `${k}=?`).join(',')} WHERE id=?`)
-    .run(...keys.map((k) => fields[k] ?? null), id).changes;
+  return statement(`UPDATE intents SET ${keys.map((k) => `${k}=?`).join(',')} WHERE id=?`).run(
+    ...keys.map((k) => fields[k] ?? null),
+    id,
+  ).changes;
 }

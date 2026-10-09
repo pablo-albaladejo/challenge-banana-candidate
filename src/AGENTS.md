@@ -36,6 +36,7 @@ Application core, imported by the Next.js catch-all route (`app/api/[...path]/ro
 
 - Identity comes only from the signed cookie via `actor()`; never trust a user id from the body or headers.
 - Schema changes are a new migration appended to `migrations.ts` (never edit a shipped one); a new table also goes in the `seed.ts` wipe list.
+- Repos prepare through `persistence/statement.ts`, which compiles each SQL text once per connection.
 - SQL lives only in `persistence/*` (shared tables), `db.ts`/`migrations.ts`, `seed.ts` (wipe list, `meta`, chunk labels) and `retrieval/{store,embeddings}.ts` (`chunks`, `meta`, `embedding_cache`). Every other module calls a repo or a retrieval function.
 - `db.ts` and `config.ts` read env/paths at first use; tests set `DATA_DIR` before dynamic imports.
 - Things worth scrutinizing:

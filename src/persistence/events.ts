@@ -1,4 +1,4 @@
-import { appDb } from '../db';
+import { statement } from './statement';
 export type EventRow = {
   id: string;
   run_id: string;
@@ -19,15 +19,13 @@ export type NewEvent = {
   createdAt: string;
 };
 export function insertEvent(e: NewEvent) {
-  appDb()
-    .prepare(
-      'INSERT INTO events(id,run_id,user_id,conversation_id,kind,data,created_at) VALUES(?,?,?,?,?,?,?)',
-    )
-    .run(e.id, e.runId, e.userId, e.conversationId, e.kind, e.data, e.createdAt);
+  statement(
+    'INSERT INTO events(id,run_id,user_id,conversation_id,kind,data,created_at) VALUES(?,?,?,?,?,?,?)',
+  ).run(e.id, e.runId, e.userId, e.conversationId, e.kind, e.data, e.createdAt);
 }
 /** A conversation's events in recording order. */
 export function eventsIn(conversationId: string) {
-  return appDb()
-    .prepare('SELECT * FROM events WHERE conversation_id=? ORDER BY created_at,rowid')
-    .all(conversationId) as EventRow[];
+  return statement('SELECT * FROM events WHERE conversation_id=? ORDER BY created_at,rowid').all(
+    conversationId,
+  ) as EventRow[];
 }

@@ -10,23 +10,9 @@ import {
   unsettledIntentIds,
   updateIntent,
 } from './intents';
-import { intentFactory, type Intent } from '../../tests/fixtures/factories';
+import { intentFactory, intentRowOf, storedIntent } from '../../tests/fixtures/factories';
 import { intentRow } from '../../tests/support/db';
 import { customers } from '../../tests/fixtures/world';
-
-const stored = (intent: Intent) => ({ ...intent, payload: JSON.stringify(intent.payload) });
-const row = (intent: Intent) => ({
-  id: intent.id,
-  user_id: intent.userId,
-  conversation_id: intent.conversationId,
-  run_id: intent.runId,
-  payload: JSON.stringify(intent.payload),
-  status: intent.status,
-  bank_reference: intent.bankReference,
-  operation_id: intent.operationId,
-  error: intent.error,
-  created_at: intent.createdAt,
-});
 
 describe('intents repository', () => {
   it('should read back a stored intent in any status', () => {
@@ -37,35 +23,35 @@ describe('intents repository', () => {
       error: faker.lorem.sentence(),
     });
     // Act
-    insertIntent(stored(intent));
+    insertIntent(storedIntent(intent));
     // Assert
-    assert.deepEqual(intentById(intent.id), row(intent));
+    assert.deepEqual(intentById(intent.id), intentRowOf(intent));
   });
   it('should keep the first intent when the same id is stored again if absent', () => {
     // Arrange
     const intent = intentFactory.build();
-    insertIntentIfAbsent(stored(intent));
+    insertIntentIfAbsent(storedIntent(intent));
     // Act
-    const changes = insertIntentIfAbsent(stored({ ...intent, status: 'completed' }));
+    const changes = insertIntentIfAbsent(storedIntent({ ...intent, status: 'completed' }));
     // Assert
     assert.equal(changes, 0);
-    assert.deepEqual(intentRow(intent.id), row(intent));
+    assert.deepEqual(intentRow(intent.id), intentRowOf(intent));
   });
   it('should find an intent only for its owner', () => {
     // Arrange
     const intent = intentFactory.build();
-    insertIntent(stored(intent));
+    insertIntent(storedIntent(intent));
     // Act
     const owned = intentOf(intent.id, intent.userId);
     const foreign = intentOf(intent.id, customers.bruno);
     // Assert
-    assert.deepEqual(owned, row(intent));
+    assert.deepEqual(owned, intentRowOf(intent));
     assert.equal(foreign, undefined);
   });
   it('should write only the given fields of an intent', () => {
     // Arrange
     const intent = intentFactory.build({ bankReference: `ref-${faker.string.uuid()}` });
-    insertIntent(stored(intent));
+    insertIntent(storedIntent(intent));
     const operationId = `op-${faker.string.uuid()}`;
     // Act
     const changes = updateIntent(intent.id, {
@@ -76,7 +62,7 @@ describe('intents repository', () => {
     // Assert
     assert.equal(changes, 1);
     assert.deepEqual(intentRow(intent.id), {
-      ...row(intent),
+      ...intentRowOf(intent),
       status: 'completed',
       operation_id: operationId,
       error: null,
@@ -87,12 +73,12 @@ describe('intents repository', () => {
     const conversationId = `conv-${faker.string.uuid()}`;
     const newer = intentFactory.build({ conversationId, createdAt: '2026-09-02T10:00:00.000Z' });
     const older = intentFactory.build({ conversationId, createdAt: '2026-09-01T10:00:00.000Z' });
-    insertIntent(stored(newer));
-    insertIntent(stored(older));
+    insertIntent(storedIntent(newer));
+    insertIntent(storedIntent(older));
     // Act
     const list = intentsIn(conversationId);
     // Assert
-    assert.deepEqual(list, [row(older), row(newer)]);
+    assert.deepEqual(list, [intentRowOf(older), intentRowOf(newer)]);
   });
   it('should name the unknown and failed intents of a conversation as unsettled', () => {
     // Arrange
@@ -100,7 +86,7 @@ describe('intents repository', () => {
     const unknown = intentFactory.build({ conversationId, status: 'unknown' });
     const failed = intentFactory.build({ conversationId, status: 'failed' });
     const completed = intentFactory.build({ conversationId, status: 'completed' });
-    for (const intent of [unknown, failed, completed]) insertIntent(stored(intent));
+    for (const intent of [unknown, failed, completed]) insertIntent(storedIntent(intent));
     // Act
     const ids = unsettledIntentIds(conversationId).map((i) => i.id);
     // Assert

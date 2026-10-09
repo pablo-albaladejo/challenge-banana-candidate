@@ -1,35 +1,14 @@
 // Readers of the app database that tests use to assert what the application stored.
 // Rows keep their SQLite column names, so a failing assertion shows exactly what is on disk.
 import { appDb } from '../../src/db';
-
-export type IntentRow = {
-  id: string;
-  user_id: string;
-  conversation_id: string | null;
-  run_id: string | null;
-  payload: string;
-  status: string;
-  bank_reference: string | null;
-  operation_id: string | null;
-  error: string | null;
-  created_at: string;
-};
+import type { IntentRow } from '../../src/persistence/intents';
+import type { EventRow } from '../../src/persistence/events';
 
 export type RunRow = {
   user_id: string;
   conversation_id: string | null;
   status: string;
   error: string | null;
-};
-
-export type EventRow = {
-  id: string;
-  run_id: string;
-  user_id: string;
-  conversation_id: string | null;
-  kind: string;
-  data: string;
-  created_at: string;
 };
 
 export const intentRow = (id: string) =>

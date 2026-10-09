@@ -1,4 +1,4 @@
-import { appDb } from '../db';
+import { statement } from './statement';
 export type MessageRow = {
   id: string;
   conversation_id: string;
@@ -16,15 +16,13 @@ export type NewMessage = {
   runId: string | null;
 };
 export function insertMessage(m: NewMessage) {
-  appDb()
-    .prepare(
-      'INSERT INTO messages(id,conversation_id,role,content,created_at,run_id) VALUES(?,?,?,?,?,?)',
-    )
-    .run(m.id, m.conversationId, m.role, m.content, m.createdAt, m.runId);
+  statement(
+    'INSERT INTO messages(id,conversation_id,role,content,created_at,run_id) VALUES(?,?,?,?,?,?)',
+  ).run(m.id, m.conversationId, m.role, m.content, m.createdAt, m.runId);
 }
 /** A conversation's messages in time order; equal times keep insertion order. */
 export function messagesIn(conversationId: string) {
-  return appDb()
-    .prepare('SELECT * FROM messages WHERE conversation_id=? ORDER BY created_at,rowid')
-    .all(conversationId) as MessageRow[];
+  return statement('SELECT * FROM messages WHERE conversation_id=? ORDER BY created_at,rowid').all(
+    conversationId,
+  ) as MessageRow[];
 }

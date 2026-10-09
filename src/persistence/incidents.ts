@@ -1,4 +1,4 @@
-import { appDb } from '../db';
+import { statement } from './statement';
 export type IncidentRow = {
   id: string;
   user_id: string;
@@ -16,22 +16,21 @@ export type NewIncident = {
   createdAt: string;
 };
 export function insertIncident(i: NewIncident) {
-  appDb()
-    .prepare(
-      'INSERT INTO incidents(id,user_id,conversation_id,summary,status,created_at) VALUES(?,?,?,?,?,?)',
-    )
-    .run(i.id, i.userId, i.conversationId, i.summary, i.status, i.createdAt);
+  statement(
+    'INSERT INTO incidents(id,user_id,conversation_id,summary,status,created_at) VALUES(?,?,?,?,?,?)',
+  ).run(i.id, i.userId, i.conversationId, i.summary, i.status, i.createdAt);
 }
 /** Every incident, newest first. */
 export function allIncidents() {
-  return appDb().prepare('SELECT * FROM incidents ORDER BY created_at DESC').all() as IncidentRow[];
+  return statement('SELECT * FROM incidents ORDER BY created_at DESC').all() as IncidentRow[];
 }
 export function incidentById(id: string) {
-  return appDb().prepare('SELECT * FROM incidents WHERE id=?').get(id) as IncidentRow | undefined;
+  return statement('SELECT * FROM incidents WHERE id=?').get(id) as IncidentRow | undefined;
 }
 /** The open incident of a conversation, if any. */
 export function openIncidentIn(conversationId: string) {
-  return appDb()
-    .prepare('SELECT id FROM incidents WHERE conversation_id=? AND status=?')
-    .get(conversationId, 'open') as { id: string } | undefined;
+  return statement('SELECT id FROM incidents WHERE conversation_id=? AND status=?').get(
+    conversationId,
+    'open',
+  ) as { id: string } | undefined;
 }
