@@ -56,6 +56,29 @@ describe('sendMessage', () => {
     assert.equal(fake.requests.filter((r) => r.path.endsWith('/responses')).length, 7);
     assert.match(result.answer, /could not finish/i);
   });
+  it('should report malformed tool arguments to the model instead of running the tool', async () => {
+    // Arrange
+    fake.script(toolCall('list_accounts', '{not json', 'call-bad'), reply('Let me retry.'));
+    // Act
+    const result = await sendMessage('lucia', conversationId, 'Accounts?');
+    // Assert
+    const second = fake.requests.filter((r) => r.path.endsWith('/responses'))[1];
+    const output = second.body.input.find(
+      (item: { type?: string; call_id?: string }) =>
+        item.type === 'function_call_output' && item.call_id === 'call-bad',
+    );
+    const parsed = JSON.parse(output.output);
+    assert.equal(parsed.status, 'failed');
+    assert.match(parsed.error, /not valid JSON/i);
+    const kinds = (
+      appDb()
+        .prepare('SELECT kind FROM events WHERE run_id=? ORDER BY rowid')
+        .all(result.runId) as {
+        kind: string;
+      }[]
+    ).map((e) => e.kind);
+    assert.ok(!kinds.includes('tool.completed'));
+  });
   it('should store the user message, the assistant answer and a completed run', async () => {
     // Arrange
     fake.script(reply('Hello Lucia, how can I help?'));

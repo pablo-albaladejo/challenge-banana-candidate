@@ -6,6 +6,7 @@ import { searchDocuments } from '../retrieval/search';
 import { knowledgeInstructions } from './prompt';
 import { toolDefinitions, runTool } from './tools';
 import { appDb } from '../db';
+import { recordEvent } from '../telemetry';
 import { config } from '../config';
 import { HttpError } from '../auth';
 import type { SearchResult } from '../types';
@@ -80,18 +81,18 @@ export async function sendMessage(userId: string, conversationId: string, conten
         break;
       }
       for (const call of calls) {
-        let args: unknown;
+        const ctx = { userId, conversationId, runId, intentId: `${runId}:${call.call_id}` };
+        let result: unknown;
         try {
-          args = JSON.parse(call.arguments);
-        } catch {
-          args = {};
+          result = await runTool(call.name, JSON.parse(call.arguments), ctx);
+        } catch (e) {
+          if (!(e instanceof SyntaxError)) throw e;
+          // Never run a tool on guessed arguments: tell the model so it can retry the call.
+          const error =
+            'The tool arguments were not valid JSON. Retry the call with valid arguments.';
+          recordEvent(ctx, 'tool.failed', { tool: call.name, status: 'failed', error });
+          result = { status: 'failed', error };
         }
-        const result = await runTool(call.name, args, {
-          userId,
-          conversationId,
-          runId,
-          intentId: `${runId}:${call.call_id}`,
-        });
         input.push({
           type: 'function_call_output',
           call_id: call.call_id,
