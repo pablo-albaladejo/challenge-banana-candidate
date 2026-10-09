@@ -44,7 +44,7 @@ Application core, imported by the Next.js catch-all route (`app/api/[...path]/ro
 
 ### Testing Requirements
 
-- `npm test` (`tests/invariants.test.ts`) covers: `seedApp` reproducibility (47 conversations, 17 incidents, 8 closed, index >300 chunks of 1536 dims), signed-session/`sameOrigin` behaviour, and the missing-API-key search response. `npm run typecheck` for types.
+- `npm test` (colocated `*.test.ts`, see `TESTING.md`) covers: `seedApp` reproducibility (47 conversations, 17 incidents, 8 closed, index >300 chunks of 1536 dims), signed-session/`sameOrigin` behaviour, and the missing-API-key search response. `npm run typecheck` for types.
 
 ### Common Patterns
 

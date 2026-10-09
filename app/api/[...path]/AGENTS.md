@@ -48,7 +48,7 @@ Auth column: "none" = before `actor()` runs; otherwise the actor is resolved fro
 
 ### Testing Requirements
 
-- `npm test` (`tests/invariants.test.ts`), `npm run typecheck`, `npm run build` (webpack).
+- `npm test` (sibling `route.test.ts`, conventions in `TESTING.md`), `npm run typecheck`, `npm run build` (webpack).
 - Manual with `npm run dev` (http://127.0.0.1:3000; bank simulator via `npm run bank`): e.g. `curl -i -X POST localhost:3000/api/session -H 'content-type: application/json' -d '{"userId":"lucia"}'` and reuse the cookie. Chat/search/ingestion need `OPENAI_API_KEY`.
 
 ### Common Patterns

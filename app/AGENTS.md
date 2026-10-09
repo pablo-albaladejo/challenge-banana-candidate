@@ -38,7 +38,7 @@ Next.js App Router root for the Banana Bank demo. Holds the root layout, the sin
 ### Testing Requirements
 
 - `npm run typecheck` (`next typegen && tsc --noEmit`) and `npm run build` (`next build --webpack`) must pass.
-- `npm test` runs `tests/invariants.test.ts` (backend invariants only; no UI tests exist).
+- `npm test` runs colocated `*.test.ts` (see `TESTING.md`); only `api/[...path]/route.test.ts` exists here, no UI tests.
 - Manual: `npm run dev`, open http://127.0.0.1:3000, switch persona, send a chat message, submit a transfer, confirm a proposal, and (as Marta/Pablo) open a case and run "Update index". Chat and search need `OPENAI_API_KEY` (otherwise API returns 503 `missing_openai_api_key`).
 
 ### Common Patterns

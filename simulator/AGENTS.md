@@ -64,7 +64,7 @@ Stand-in for an **EXTERNAL bank** (Banana Bank core). It owns the ledger in its 
 
 ### Testing Requirements
 
-- `npm test` imports `seedBank`, `transfer`, `setScenario` etc. directly against a temp dir. Any change here can break `tests/invariants.test.ts` (reset determinism, no-money-creation, idempotency, fault scenarios).
+- `npm test` imports `seedBank`, `transfer`, `setScenario` etc. directly against a temp dir. Any change here can break the colocated `bank.test.ts` / `seed.test.ts` (reset determinism, no-money-creation, idempotency, fault scenarios).
 - Manual: `npm run bank`, then `npm run scenario -- <profile> [seed]`.
 
 ### Common Patterns

@@ -32,7 +32,7 @@ Server-side integration with the external bank simulator (HTTP, signed requests)
 
 ### Testing Requirements
 
-- Ledger-side invariants in `tests/invariants.test.ts` (transfer atomicity, idempotency by actor+reference, lost response, intermittent scenarios) exercise the simulator, not this code. Run `npm run scenario` (failure scenarios) for end-to-end checks and `npm run typecheck`.
+- No sibling tests here yet. Ledger-side invariants in `simulator/bank.test.ts` (transfer atomicity, idempotency by actor+reference, lost response, intermittent scenarios) exercise the simulator, not this code. Run `npm run scenario` (failure scenarios) for end-to-end checks and `npm run typecheck`.
 
 ### Common Patterns
 

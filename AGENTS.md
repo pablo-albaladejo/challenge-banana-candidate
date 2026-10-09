@@ -27,6 +27,7 @@ Banana Bank technical challenge starter: a fictional bank's AI assistant built o
 | `tsconfig.json`    | TypeScript configuration                                                                                                                           |
 | `.nvmrc`           | Node 24 (minimum `>=24.0.0`)                                                                                                                       |
 | `.prettierrc.json` | Prettier formatting rules                                                                                                                          |
+| `TESTING.md`       | Testing conventions (colocation, describe/it, AAA, TDD) — mandatory for every test                                                                 |
 | `CLAUDE.md`        | Imports this file                                                                                                                                  |
 
 ## Subdirectories
@@ -37,7 +38,7 @@ Banana Bank technical challenge starter: a fictional bank's AI assistant built o
 | `src/`        | Application core: agent, banking integration, retrieval, ingestion, operator view (see `src/AGENTS.md`) |
 | `simulator/`  | External bank simulator and ledger — a test dependency, not the product (see `simulator/AGENTS.md`)     |
 | `scripts/`    | CLI entrypoints for setup, dev, reset, ingest, scenarios, doctor (see `scripts/AGENTS.md`)              |
-| `tests/`      | Public invariant tests (see `tests/AGENTS.md`)                                                          |
+| `tests/`      | Shared test harness only; tests are colocated with source (see `tests/AGENTS.md`)                       |
 | `fixtures/`   | Document corpus, seed conversations, portable embedding index (see `fixtures/AGENTS.md`)                |
 | `docs/`       | Challenge brief and bank API contract (see `docs/AGENTS.md`)                                            |
 | `submission/` | Candidate submission materials (see `submission/AGENTS.md`)                                             |
@@ -56,7 +57,8 @@ Banana Bank technical challenge starter: a fictional bank's AI assistant built o
 
 ### Testing Requirements
 
-- `npm run typecheck` (runs `next typegen` first) and `npm test` (node:test over `tests/invariants.test.ts`).
+- **All tests follow `TESTING.md` — read it before writing or touching any test.** In short: the test file sits next to the file it tests (`x.ts` → `x.test.ts`); `describe` per module/function; one `it('should <positive functional outcome>')` per case; every body split by `// Arrange`, `// Act`, `// Assert` (`// Act & Assert` for `assert.throws`/`rejects`); no `skip`/`only`/`todo`. TDD: failing test first, confirm it fails for the right reason, then fix.
+- `npm run typecheck` (runs `next typegen` first) and `npm test` (node:test over every colocated `*.test.ts` in `app/`, `src/`, `simulator/`, with `tests/setup.ts` preloaded).
 - `npm run format:check` must pass; `npm run format` applies Prettier (`.prettierignore` skips `fixtures/`, `docs/`, `README.md`). No linter or CI exists.
 - Add checks that support your improvements; public tests are not a readiness certificate.
 - Reproduce bank failures with `npm run scenario -- normal | intermittent 17 | lost-response` while the bank runs.
