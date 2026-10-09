@@ -44,6 +44,18 @@ describe('sendMessage', () => {
     await resetBank();
   });
 
+  it('should mark the run incomplete when the model exhausts its rounds without answering', async () => {
+    // Arrange
+    fake.script(...Array.from({ length: 7 }, () => toolCall('list_accounts', {})));
+    // Act
+    const result = await sendMessage('lucia', conversationId, 'Loop forever');
+    // Assert
+    const run = runOf(result.runId);
+    assert.equal(run.status, 'incomplete');
+    assert.match(run.error!, /round limit/i);
+    assert.equal(fake.requests.filter((r) => r.path.endsWith('/responses')).length, 7);
+    assert.match(result.answer, /could not finish/i);
+  });
   it('should store the user message, the assistant answer and a completed run', async () => {
     // Arrange
     fake.script(reply('Hello Lucia, how can I help?'));
