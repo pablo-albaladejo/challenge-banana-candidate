@@ -20,10 +20,32 @@ export async function transferMoney(ctx: ToolContext, args: unknown): Promise<Ac
   const input = transferSchema.parse(args),
     db = appDb();
   const previous = db
-    .prepare('SELECT user_id,payload FROM intents WHERE id=?')
-    .get(ctx.intentId) as { user_id: string; payload: string } | undefined;
+    .prepare('SELECT user_id,payload,status,bank_reference,operation_id FROM intents WHERE id=?')
+    .get(ctx.intentId) as
+    | {
+        user_id: string;
+        payload: string;
+        status: string;
+        bank_reference: string;
+        operation_id: string;
+      }
+    | undefined;
   if (previous && (previous.user_id !== ctx.userId || previous.payload !== JSON.stringify(input)))
     throw new HttpError(409, 'This intent belongs to a different payload.');
+  // A completed intent is a verified fact: answer from the record instead of asking the bank again.
+  if (previous?.status === 'completed')
+    return {
+      status: 'completed',
+      operation: {
+        ...input,
+        id: previous.operation_id,
+        userId: previous.user_id,
+        reference: previous.bank_reference,
+        status: 'completed',
+      },
+      intentId: ctx.intentId,
+      replay: true,
+    };
   db.prepare('INSERT OR IGNORE INTO intents VALUES(?,?,?,?,?,?,?,?,?,?)').run(
     ctx.intentId,
     ctx.userId,

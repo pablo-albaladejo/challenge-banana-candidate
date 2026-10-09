@@ -5,6 +5,7 @@ import { ZodError } from 'zod';
 import { transferMoney } from './actions';
 import { HttpError } from '../auth';
 import { appDb } from '../db';
+import { config } from '../config';
 import {
   balanceOf,
   bankSnapshot,
@@ -155,6 +156,36 @@ describe('transferMoney', () => {
     await assert.rejects(transferMoney(ctx, { ...input, reference: 'chosen-by-model' }), ZodError);
     assert.deepEqual(await bankSnapshot(), before);
     assert.equal(intentRow(ctx.intentId), undefined);
+  });
+  it('should return the original operation when a completed intent is retried', async () => {
+    // Arrange
+    const ctx = context();
+    const first = await transferMoney(ctx, input);
+    const before = await bankSnapshot();
+    // Act
+    const retry = await transferMoney(ctx, input);
+    // Assert
+    assert.equal(retry.status, 'completed');
+    assert.equal((retry.operation as { id: string }).id, (first.operation as { id: string }).id);
+    assert.deepEqual(await bankSnapshot(), before);
+  });
+  it('should keep a completed intent completed when it is retried while the bank is unreachable', async () => {
+    // Arrange
+    const ctx = context();
+    const first = await transferMoney(ctx, input);
+    const original = config.bankUrl;
+    config.bankUrl = 'http://127.0.0.1:9';
+    // Act
+    let retry;
+    try {
+      retry = await transferMoney(ctx, input);
+    } finally {
+      config.bankUrl = original;
+    }
+    // Assert
+    assert.equal(retry.status, 'completed');
+    assert.equal((retry.operation as { id: string }).id, (first.operation as { id: string }).id);
+    assert.equal(intentRow(ctx.intentId)!.status, 'completed');
   });
   it('should reject reusing an intent with a different payload as a 409 conflict', async () => {
     // Arrange
