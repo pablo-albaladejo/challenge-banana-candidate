@@ -36,6 +36,14 @@ describe('seedApp', () => {
     assert.ok(chunks.length > 300);
     assert.ok(chunks.every((c) => c.vector?.length === 1536));
   });
+  it('should restore every chunk of the supplied index with its document metadata', () => {
+    // Arrange
+    seedApp();
+    // Act
+    const chunks = allChunks();
+    // Assert
+    assert.ok(chunks.every((c) => c.title && c.version && c.validFrom));
+  });
   it('should reproduce identical histories and index when run again', () => {
     // Arrange
     seedApp();

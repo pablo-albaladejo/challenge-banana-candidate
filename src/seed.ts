@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import path from 'node:path';
 import { restoreIndex } from './retrieval/store';
+import { documents } from './ingestion/pipeline';
 export function seedApp() {
   const db = appDb();
   db.transaction(() => {
@@ -63,7 +64,17 @@ export function seedApp() {
     db.prepare('INSERT INTO meta VALUES(?,?)').run('seed', 'banana-v3-2026-09-25');
   })();
   const index = path.resolve('fixtures/embeddings/index.json.gz');
-  if (existsSync(index)) restoreIndex(JSON.parse(gunzipSync(readFileSync(index)).toString()));
+  if (existsSync(index)) {
+    restoreIndex(JSON.parse(gunzipSync(readFileSync(index)).toString()));
+    // The supplied index only labels each document's first chunk; vectors depend on text alone,
+    // so every chunk gets its document's title, version and validity from the manifest.
+    const label = db.prepare(
+      'UPDATE chunks SET title=?,version=?,valid_from=?,valid_to=? WHERE document_id=?',
+    );
+    db.transaction(() => {
+      for (const d of documents()) label.run(d.title, d.version, d.validFrom, d.validTo, d.id);
+    })();
+  }
   return {
     conversations: (db.prepare('SELECT COUNT(*) n FROM conversations').get() as { n: number }).n,
     incidents: (db.prepare('SELECT COUNT(*) n FROM incidents').get() as { n: number }).n,

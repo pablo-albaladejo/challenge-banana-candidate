@@ -1,5 +1,5 @@
 import { appDb } from '../db';
-import { config } from '../config';
+import { config, referenceDate } from '../config';
 import { embedTexts } from './embeddings';
 import { allChunks } from './store';
 import type { SearchResult } from '../types';
@@ -14,14 +14,22 @@ export async function searchDocuments(
   if (meta.value !== config.embeddingModel)
     throw new Error('The model does not match the index. Re-ingest the documents.');
   const [queryVector] = await embedTexts([query]);
-  return allChunks()
-    .filter((c) => role === 'operator' || c.audience === 'public')
-    .map(({ vector, ...c }) => {
-      if (vector!.length !== queryVector.length)
-        throw new Error('Incompatible embedding dimensions.');
-      const score = vector!.reduce((sum, v, i) => sum + v * queryVector[i], 0);
-      return { ...c, score };
-    })
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit);
+  return (
+    allChunks()
+      .filter((c) => role === 'operator' || c.audience === 'public')
+      // Only versions in force on the reference date: superseded versions all carry a past validTo.
+      .filter(
+        (c) =>
+          (!c.validFrom || c.validFrom <= referenceDate) &&
+          (!c.validTo || c.validTo >= referenceDate),
+      )
+      .map(({ vector, ...c }) => {
+        if (vector!.length !== queryVector.length)
+          throw new Error('Incompatible embedding dimensions.');
+        const score = vector!.reduce((sum, v, i) => sum + v * queryVector[i], 0);
+        return { ...c, score };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+  );
 }

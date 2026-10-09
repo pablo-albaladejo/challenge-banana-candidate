@@ -6,6 +6,7 @@ import { allChunks } from './store';
 import { seedApp } from '../seed';
 import { appDb } from '../db';
 import { startFakeOpenAI, type FakeOpenAI } from '../../tests/support/openai';
+import { referenceDate } from '../config';
 import type { Chunk } from '../types';
 describe('searchDocuments', () => {
   let fake: FakeOpenAI;
@@ -19,8 +20,9 @@ describe('searchDocuments', () => {
     seedApp();
     fake.reset();
     const chunks = allChunks();
-    publicChunk = chunks.find((c) => c.audience === 'public')!;
-    internalChunk = chunks.find((c) => c.audience === 'internal')!;
+    const current = chunks.filter((c) => !c.validTo || c.validTo >= referenceDate);
+    publicChunk = current.find((c) => c.audience === 'public')!;
+    internalChunk = current.find((c) => c.audience === 'internal')!;
   });
   it('should rank first the chunk whose text equals the query without calling the model', async () => {
     // Arrange
@@ -31,6 +33,18 @@ describe('searchDocuments', () => {
     assert.equal(results[0].id, publicChunk.id);
     assert.equal(results[0].documentId, publicChunk.documentId);
     assert.equal(fake.requests.length, 0);
+  });
+  it('should only return documents valid on the reference date', async () => {
+    // Arrange
+    const expired = allChunks().find(
+      (c) => c.audience === 'public' && c.validTo && c.validTo < referenceDate,
+    )!;
+    // Act
+    const results = await searchDocuments(expired.text);
+    // Assert
+    assert.ok(results.length > 0);
+    assert.ok(results.every((r) => r.validFrom! <= referenceDate));
+    assert.ok(results.every((r) => !r.validTo || r.validTo >= referenceDate));
   });
   it('should embed an uncached query once and rank its nearest chunk first', async () => {
     // Arrange

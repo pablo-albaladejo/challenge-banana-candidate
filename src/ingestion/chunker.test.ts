@@ -79,15 +79,18 @@ describe('chunkDocument', () => {
     // Assert
     assert.ok(chunks.every((c) => c.documentId === 'doc-test' && c.audience === 'internal'));
   });
-  it('should carry the title, version and validity on the first chunk', () => {
+  it('should carry the title, version and validity on every chunk', () => {
     // Arrange
     const expired = { ...doc, version: 1, validFrom: '2026-01-01', validTo: '2026-08-31' };
     // Act
-    const [first] = chunkDocument(expired, 'short body');
+    const chunks = chunkDocument(expired, 'x'.repeat(2000));
     // Assert
-    assert.equal(first.title, 'Test document');
-    assert.equal(first.version, 1);
-    assert.equal(first.validFrom, '2026-01-01');
-    assert.equal(first.validTo, '2026-08-31');
+    assert.ok(chunks.length > 1);
+    for (const chunk of chunks) {
+      assert.equal(chunk.title, 'Test document');
+      assert.equal(chunk.version, 1);
+      assert.equal(chunk.validFrom, '2026-01-01');
+      assert.equal(chunk.validTo, '2026-08-31');
+    }
   });
 });
