@@ -17,10 +17,10 @@ const actionSchema = z.object({
   conversationId: z.string().nullable().optional(),
   intentId: z.string().max(150).optional(),
 });
-/** The body is validated before the role check, so an operator's invalid body is a 400. */
+/** The role is checked before the body, so an operator never reaches validation or a tool. */
 export const runAction: Handler = async ({ request, actor }) => {
-  const body = actionSchema.parse(await request.json());
   if (actor.role !== 'customer') throw new HttpError(403, 'A customer is required.');
+  const body = actionSchema.parse(await request.json());
   if (body.conversationId) conversationFor(body.conversationId, actor.id);
   const ctx = {
     userId: actor.id,

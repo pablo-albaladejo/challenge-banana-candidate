@@ -230,6 +230,8 @@ Docs: `src/AGENTS.md` lists the new `src/migrations.ts` (beside `src/db.ts`) and
 
 ### Phase 2 — HTTP layer (4 h)
 
+> **Superseded after phase 2 (decision 4, §8).** The route-quirk cleanup changed these semantics on purpose. Methods are now explicit, and HEAD is answered as GET. A known path with another method returns 405 with `Allow`, and trailing segments return 404. `actions` now checks the role before the body. `ANY` and `*rest` are gone. Cases 4, 5 and 7–11 below describe the state before the cleanup. `app/api/[...path]/AGENTS.md` describes the current semantics.
+
 **Step 0: characterization cases added to `app/api/[...path]/route.test.ts`, green against the old `route.ts` before anything moves.** Each pins a semantic the route table must reproduce.
 
 Routing and ordering:

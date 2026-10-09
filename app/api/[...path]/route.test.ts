@@ -1,7 +1,7 @@
 import { after, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { faker } from '@faker-js/faker';
-import { POST } from './route';
+import { GET, POST } from './route';
 import { seedApp } from '../../../src/seed';
 import { appDb } from '../../../src/db';
 import { sessionToken } from '../../../src/auth';
@@ -876,8 +876,8 @@ describe('unknown routes', () => {
   });
 });
 
-// Characterization of today's routing semantics (plan phase 2, step 0). The route table in
-// src/http/ must reproduce each of these; route-quirk cleanup is a separate, test-first change.
+// Routing semantics of src/http/handle.ts: the order of the origin, session, route and body
+// checks; explicit methods (405 with `Allow`, HEAD answered as GET); exact paths only.
 describe('routing order', () => {
   beforeEach(() => seedApp());
 
@@ -887,6 +887,18 @@ describe('routing order', () => {
     const result = await api('GET', 'does-not-exist');
     // Assert
     assert.equal(result.status, 401);
+  });
+
+  it('should require a session before answering a private route with the wrong method', async () => {
+    // Arrange
+    // Act
+    const actions = await api('GET', 'actions');
+    const incidents = await api('POST', 'incidents');
+    // Assert
+    assert.equal(actions.status, 401);
+    assert.equal(actions.headers.get('allow'), null);
+    assert.equal(incidents.status, 401);
+    assert.equal(incidents.headers.get('allow'), null);
   });
 
   it('should reject a post to an unknown route from another origin', async () => {
@@ -909,26 +921,14 @@ describe('routing order', () => {
     assert.equal(result.body.error, 'Origin not allowed.');
   });
 
-  it('should answer a route with the wrong method as not found', async () => {
-    // Arrange
-    // Act
-    const actions = await api('GET', 'actions', { as: customers.lucia });
-    const confirm = await api('GET', 'approvals/does-not-exist/confirm', { as: customers.lucia });
-    // Assert
-    assert.equal(actions.status, 404);
-    assert.equal(actions.body.error, 'Route not found.');
-    assert.equal(confirm.status, 404);
-    assert.equal(confirm.body.error, 'Route not found.');
-  });
-
-  it('should validate an action body before checking the role', async () => {
+  it('should check the customer role before validating an action body', async () => {
     // Arrange
     const body = { name: 'delete_account', arguments: {} };
     // Act
     const result = await api('POST', 'actions', { as: operators.marta, body });
     // Assert
-    assert.equal(result.status, 400);
-    assert.equal(result.body.error, 'Invalid request data.');
+    assert.equal(result.status, 403);
+    assert.equal(result.body.error, 'A customer is required.');
   });
 
   it('should check conversation ownership before validating a message body', async () => {
@@ -955,70 +955,120 @@ describe('routing order', () => {
   });
 });
 
-describe('method-agnostic routes', () => {
+describe('explicit methods', () => {
   beforeEach(() => seedApp());
 
-  it('should report health to a same-origin post', async () => {
+  it('should answer a post to health with method not allowed without a session', async () => {
     // Arrange
     // Act
     const result = await api('POST', 'health');
     // Assert
-    assert.equal(result.status, 200);
-    assert.equal(result.body.ok, true);
-    assert.equal(result.body.service, 'banana-app');
+    assert.equal(result.status, 405);
+    assert.equal(result.body.error, 'Method not allowed.');
+    assert.equal(result.headers.get('allow'), 'GET, HEAD');
   });
 
-  it('should list every support case to an operator on a post', async () => {
+  it('should answer a post to people with method not allowed without a session', async () => {
+    // Arrange
+    // Act
+    const result = await api('POST', 'people');
+    // Assert
+    assert.equal(result.status, 405);
+    assert.equal(result.headers.get('allow'), 'GET, HEAD');
+  });
+
+  it('should answer a post to incidents with method not allowed and allow GET', async () => {
     // Arrange
     // Act
     const result = await api('POST', 'incidents', { as: operators.marta });
     // Assert
-    assert.equal(result.status, 200);
-    assert.equal(result.body.length, counts.cases);
+    assert.equal(result.status, 405);
+    assert.equal(result.body.error, 'Method not allowed.');
+    assert.equal(result.headers.get('allow'), 'GET, HEAD');
+    assert.equal(result.headers.get('cache-control'), 'no-store');
   });
 
-  it('should return the conversation detail on a post to the conversation', async () => {
+  it('should answer a get of actions with method not allowed and allow POST', async () => {
+    // Arrange
+    // Act
+    const result = await api('GET', 'actions', { as: customers.lucia });
+    // Assert
+    assert.equal(result.status, 405);
+    assert.equal(result.body.error, 'Method not allowed.');
+    assert.equal(result.headers.get('allow'), 'POST');
+  });
+
+  it('should answer a get of a confirmation with method not allowed and allow POST', async () => {
+    // Arrange
+    // Act
+    const result = await api('GET', 'approvals/does-not-exist/confirm', { as: customers.lucia });
+    // Assert
+    assert.equal(result.status, 405);
+    assert.equal(result.headers.get('allow'), 'POST');
+  });
+
+  it('should answer a post to a conversation with method not allowed and allow GET', async () => {
     // Arrange
     // Act
     const result = await api('POST', `conversations/${conversations.luciaWelcome}`, {
       as: customers.lucia,
     });
     // Assert
-    assert.equal(result.status, 200);
-    assert.equal(result.body.conversation.id, conversations.luciaWelcome);
-    assert.ok(result.body.messages.length > 0);
+    assert.equal(result.status, 405);
+    assert.equal(result.headers.get('allow'), 'GET, HEAD');
   });
 
-  it('should return the conversation detail on a get of its messages', async () => {
+  it('should answer a get of conversation messages with method not allowed and allow POST', async () => {
     // Arrange
     // Act
     const result = await api('GET', `conversations/${conversations.luciaWelcome}/messages`, {
       as: customers.lucia,
     });
     // Assert
-    assert.equal(result.status, 200);
-    assert.equal(result.body.conversation.id, conversations.luciaWelcome);
-    assert.ok(result.body.messages.length > 0);
+    assert.equal(result.status, 405);
+    assert.equal(result.headers.get('allow'), 'POST');
+  });
+
+  it('should answer a head request to a public route like a get', async () => {
+    // Arrange
+    const request = new Request('http://127.0.0.1:3000/api/health', { method: 'HEAD' });
+    // Act
+    const response = await GET(request, { params: Promise.resolve({ path: ['health'] }) });
+    // Assert
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+  });
+
+  it('should answer a head request to a private read route for the session', async () => {
+    // Arrange
+    const request = new Request('http://127.0.0.1:3000/api/documents', {
+      method: 'HEAD',
+      headers: { cookie: `banana_actor=${sessionToken(customers.lucia)}` },
+    });
+    // Act
+    const response = await GET(request, { params: Promise.resolve({ path: ['documents'] }) });
+    // Assert
+    assert.equal(response.status, 200);
   });
 });
 
-describe('trailing path segments', () => {
+describe('exact paths', () => {
   beforeEach(() => seedApp());
 
-  it('should treat a post to conversations/:id/messages/x as a message', async () => {
+  it('should answer a post to conversations/:id/messages/x as an unknown route', async () => {
     // Arrange
-    const body = { content: '   ' };
+    const body = { content: 'Hello' };
     // Act
     const result = await api('POST', `conversations/${conversations.luciaWelcome}/messages/x`, {
       as: customers.lucia,
       body,
     });
     // Assert
-    assert.equal(result.status, 400);
-    assert.equal(result.body.error, 'Invalid request data.');
+    assert.equal(result.status, 404);
+    assert.equal(result.body.error, 'Route not found.');
   });
 
-  it('should treat a post to approvals/:id/confirm/x as a confirmation', async () => {
+  it('should answer a post to approvals/:id/confirm/x as an unknown route', async () => {
     // Arrange
     // Act
     const result = await api('POST', 'approvals/does-not-exist/confirm/x', {
@@ -1026,18 +1076,35 @@ describe('trailing path segments', () => {
     });
     // Assert
     assert.equal(result.status, 404);
-    assert.equal(result.body.error, 'Proposal not found.');
+    assert.equal(result.body.error, 'Route not found.');
   });
 
-  it('should treat a get of documents/:id/chunks/x as the chunk list', async () => {
+  it('should answer a get of documents/:id/chunks/x as an unknown route', async () => {
     // Arrange
     const id = publicDocumentId();
     // Act
     const result = await api('GET', `documents/${id}/chunks/x`, { as: customers.lucia });
     // Assert
-    assert.equal(result.status, 200);
-    assert.ok(result.body.length > 0);
-    assert.ok(result.body.every((c: any) => c.documentId === id && !('vector' in c)));
+    assert.equal(result.status, 404);
+    assert.equal(result.body.error, 'Route not found.');
+  });
+
+  it('should answer extra segments after a conversation, case or document as an unknown route', async () => {
+    // Arrange
+    const id = publicDocumentId();
+    // Act
+    const conversation = await api('GET', `conversations/${conversations.luciaWelcome}/x`, {
+      as: customers.lucia,
+    });
+    const incident = await api('GET', 'incidents/case-1/x', { as: operators.marta });
+    const document = await api('GET', `documents/${id}/x`, { as: customers.lucia });
+    // Assert
+    assert.equal(conversation.status, 404);
+    assert.equal(conversation.body.error, 'Route not found.');
+    assert.equal(incident.status, 404);
+    assert.equal(incident.body.error, 'Route not found.');
+    assert.equal(document.status, 404);
+    assert.equal(document.body.error, 'Route not found.');
   });
 });
 
@@ -1064,8 +1131,7 @@ describe('roles and side effects', () => {
     assert.equal(create.body.error, 'Select a customer to open a chat.');
   });
 
-  // Current behaviour, not the target: the rename runs before sendMessage. Revisit in the
-  // route-quirk cleanup.
+  // Intended for a model failure: sendMessage has already stored the message, so the title names it.
   it('should title a new conversation from its first message even when the model fails', async () => {
     // Arrange
     const { body } = await api('POST', 'conversations', { as: customers.lucia });

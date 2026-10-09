@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { match, type Route } from './router';
+import { allowedMethods, match, type Route } from './router';
 
 const table = (...routes: [Route<string>['method'], string][]): Route<string>[] =>
   routes.map(([method, pattern]) => ({ method, pattern, handler: `${method} ${pattern}` }));
@@ -12,7 +12,7 @@ describe('match', () => {
     // Act
     const result = match(routes, 'GET', ['health']);
     // Assert
-    assert.deepEqual(result, { handler: 'GET health', params: {}, rest: [] });
+    assert.deepEqual(result, { handler: 'GET health', params: {} });
   });
 
   it('should capture a named parameter', () => {
@@ -24,46 +24,42 @@ describe('match', () => {
     assert.deepEqual(result?.params, { id: 'case-1' });
   });
 
-  it('should capture trailing segments into rest', () => {
+  it('should reject extra segments beyond the pattern', () => {
     // Arrange
-    const routes = table(['POST', 'approvals/:id/confirm/*rest']);
+    const routes = table(['POST', 'approvals/:id/confirm']);
     // Act
-    const result = match(routes, 'POST', ['approvals', 'a-1', 'confirm', 'x', 'y']);
+    const result = match(routes, 'POST', ['approvals', 'a-1', 'confirm', 'x']);
     // Assert
-    assert.deepEqual(result, {
-      handler: 'POST approvals/:id/confirm/*rest',
-      params: { id: 'a-1' },
-      rest: ['x', 'y'],
-    });
-  });
-
-  it('should match a trailing rest with no extra segments', () => {
-    // Arrange
-    const routes = table(['GET', 'documents/:id/*rest']);
-    // Act
-    const result = match(routes, 'GET', ['documents', 'd-1']);
-    // Assert
-    assert.deepEqual(result?.rest, []);
+    assert.equal(result, null);
   });
 
   it('should require every named parameter to be present', () => {
     // Arrange
-    const routes = table(['GET', 'documents/:id/*rest']);
+    const routes = table(['GET', 'documents/:id']);
     // Act
     const result = match(routes, 'GET', ['documents']);
     // Assert
     assert.equal(result, null);
   });
 
-  it('should match a route of any method for GET and POST', () => {
+  it('should match a GET and a POST route on the same path to their own handlers', () => {
     // Arrange
-    const routes = table(['ANY', 'incidents']);
+    const routes = table(['POST', 'conversations'], ['GET', 'conversations']);
     // Act
-    const get = match(routes, 'GET', ['incidents']);
-    const post = match(routes, 'POST', ['incidents']);
+    const get = match(routes, 'GET', ['conversations']);
+    const post = match(routes, 'POST', ['conversations']);
     // Assert
-    assert.equal(get?.handler, 'ANY incidents');
-    assert.equal(post?.handler, 'ANY incidents');
+    assert.equal(get?.handler, 'GET conversations');
+    assert.equal(post?.handler, 'POST conversations');
+  });
+
+  it('should match a HEAD request against a GET route', () => {
+    // Arrange
+    const routes = table(['GET', 'health']);
+    // Act
+    const result = match(routes, 'HEAD', ['health']);
+    // Assert
+    assert.equal(result?.handler, 'GET health');
   });
 
   it('should skip a route registered for another method', () => {
@@ -75,35 +71,77 @@ describe('match', () => {
     assert.equal(result, null);
   });
 
-  it('should reject extra segments on a route without rest', () => {
-    // Arrange
-    const routes = table(['ANY', 'health']);
-    // Act
-    const result = match(routes, 'GET', ['health', 'x']);
-    // Assert
-    assert.equal(result, null);
-  });
-
   it('should return the first matching route in table order', () => {
     // Arrange
-    const routes = table(
-      ['POST', 'conversations/:id/messages/*rest'],
-      ['ANY', 'conversations/:id/*rest'],
-    );
+    const routes = table(['GET', 'documents/:id'], ['GET', 'documents/latest']);
     // Act
-    const post = match(routes, 'POST', ['conversations', 'c-1', 'messages']);
-    const get = match(routes, 'GET', ['conversations', 'c-1', 'messages']);
+    const result = match(routes, 'GET', ['documents', 'latest']);
     // Assert
-    assert.equal(post?.handler, 'POST conversations/:id/messages/*rest');
-    assert.equal(get?.handler, 'ANY conversations/:id/*rest');
+    assert.deepEqual(result, { handler: 'GET documents/:id', params: { id: 'latest' } });
   });
 
   it('should return null when no route matches', () => {
     // Arrange
-    const routes = table(['ANY', 'health'], ['ANY', 'people']);
+    const routes = table(['GET', 'health'], ['GET', 'people']);
     // Act
     const result = match(routes, 'GET', ['does-not-exist']);
     // Assert
     assert.equal(result, null);
+  });
+});
+
+describe('allowedMethods', () => {
+  it('should list the method of the route matching the path', () => {
+    // Arrange
+    const routes = table(['POST', 'actions'], ['POST', 'incidents/:id']);
+    // Act
+    const result = allowedMethods(routes, ['incidents', 'case-1']);
+    // Assert
+    assert.deepEqual(result, ['POST']);
+  });
+
+  it('should list HEAD alongside GET because HEAD is answered as GET', () => {
+    // Arrange
+    const routes = table(['POST', 'actions'], ['GET', 'incidents/:id']);
+    // Act
+    const result = allowedMethods(routes, ['incidents', 'case-1']);
+    // Assert
+    assert.deepEqual(result, ['GET', 'HEAD']);
+  });
+
+  it('should list each method once when several routes accept the path', () => {
+    // Arrange
+    const routes = table(['GET', 'documents/latest'], ['GET', 'documents/:id']);
+    // Act
+    const result = allowedMethods(routes, ['documents', 'latest']);
+    // Assert
+    assert.deepEqual(result, ['GET', 'HEAD']);
+  });
+
+  it('should list every method a path accepts in alphabetical order', () => {
+    // Arrange
+    const routes = table(['POST', 'conversations'], ['GET', 'conversations']);
+    // Act
+    const result = allowedMethods(routes, ['conversations']);
+    // Assert
+    assert.deepEqual(result, ['GET', 'HEAD', 'POST']);
+  });
+
+  it('should return no methods for an unknown path', () => {
+    // Arrange
+    const routes = table(['GET', 'health'], ['POST', 'actions']);
+    // Act
+    const result = allowedMethods(routes, ['does-not-exist']);
+    // Assert
+    assert.deepEqual(result, []);
+  });
+
+  it('should return no methods for a path with extra segments', () => {
+    // Arrange
+    const routes = table(['GET', 'documents/:id/chunks']);
+    // Act
+    const result = allowedMethods(routes, ['documents', 'd-1', 'chunks', 'x']);
+    // Assert
+    assert.deepEqual(result, []);
   });
 });
