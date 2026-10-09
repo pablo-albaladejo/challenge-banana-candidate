@@ -17,7 +17,7 @@
     "scenario": "node --import tsx scripts/scenario.ts",
     "doctor": "node --import tsx scripts/doctor.ts",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "node --import tsx --import ./tests/setup.ts --test \"app/**/*.test.ts\" \"src/**/*.test.ts\" \"simulator/**/*.test.ts\"",
+    "test": "node --import tsx --import ./tests/setup.ts --test-global-setup=./tests/global-setup.ts --test \"app/**/*.test.ts\" \"src/**/*.test.ts\" \"simulator/**/*.test.ts\"",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test:e2e": "playwright test",
@@ -34,15 +34,18 @@
     "zod": "4.3.6"
   },
   "devDependencies": {
+    "@faker-js/faker": "^10.6.0",
     "@playwright/test": "^1.64.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/rosie": "^0.0.45",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.4.0",
     "husky": "^9.1.7",
     "prettier": "3.9.9",
+    "rosie": "^2.1.1",
     "tsx": "4.23.15",
     "typescript": "^5.9.0"
   }

@@ -5,28 +5,12 @@ import { appDb } from '../db';
 import { seedApp } from '../seed';
 import { HttpError } from '../auth';
 import { resetBank, startBank, stopBank } from '../../tests/support/bank';
+import { eventsFor, latestRun, messagesOf, runOf } from '../../tests/support/db';
 import { reply, startFakeOpenAI, toolCall, type FakeOpenAI } from '../../tests/support/openai';
-import type { SearchResult } from '../types';
+import { searchResultFactory } from '../../tests/fixtures/factories';
+import { accounts, conversations, customers } from '../../tests/fixtures/world';
 
-const conversationId = 'conv-lucia-welcome';
-
-const messagesOf = (runId: string) =>
-  appDb()
-    .prepare('SELECT role,content FROM messages WHERE run_id=? ORDER BY created_at,rowid')
-    .all(runId) as { role: string; content: string }[];
-
-const runOf = (runId: string) =>
-  appDb()
-    .prepare('SELECT user_id,conversation_id,status,error FROM runs WHERE id=?')
-    .get(runId) as {
-    user_id: string;
-    conversation_id: string;
-    status: string;
-    error: string | null;
-  };
-
-const latestRun = () =>
-  appDb().prepare('SELECT id FROM runs ORDER BY rowid DESC LIMIT 1').get() as { id: string };
+const conversationId = conversations.luciaWelcome;
 
 describe('sendMessage', () => {
   let fake: FakeOpenAI;
@@ -48,7 +32,7 @@ describe('sendMessage', () => {
     // Arrange
     fake.script(...Array.from({ length: 7 }, () => toolCall('list_accounts', {})));
     // Act
-    const result = await sendMessage('lucia', conversationId, 'Loop forever');
+    const result = await sendMessage(customers.lucia, conversationId, 'Loop forever');
     // Assert
     const run = runOf(result.runId);
     assert.equal(run.status, 'incomplete');
@@ -60,7 +44,7 @@ describe('sendMessage', () => {
     // Arrange
     fake.script(toolCall('list_accounts', '{not json', 'call-bad'), reply('Let me retry.'));
     // Act
-    const result = await sendMessage('lucia', conversationId, 'Accounts?');
+    const result = await sendMessage(customers.lucia, conversationId, 'Accounts?');
     // Assert
     const second = fake.requests.filter((r) => r.path.endsWith('/responses'))[1];
     const output = second.body.input.find(
@@ -70,20 +54,14 @@ describe('sendMessage', () => {
     const parsed = JSON.parse(output.output);
     assert.equal(parsed.status, 'failed');
     assert.match(parsed.error, /not valid JSON/i);
-    const kinds = (
-      appDb()
-        .prepare('SELECT kind FROM events WHERE run_id=? ORDER BY rowid')
-        .all(result.runId) as {
-        kind: string;
-      }[]
-    ).map((e) => e.kind);
+    const kinds = eventsFor(result.runId).map((e) => e.kind);
     assert.ok(!kinds.includes('tool.completed'));
   });
   it('should reject a conversation owned by another customer before storing anything', async () => {
     // Arrange
     const before = appDb().prepare('SELECT COUNT(*) AS n FROM messages').get() as { n: number };
     // Act & Assert
-    await assert.rejects(sendMessage('bruno', conversationId, 'Hi'), (e) => {
+    await assert.rejects(sendMessage(customers.bruno, conversationId, 'Hi'), (e) => {
       assert.ok(e instanceof HttpError);
       assert.equal(e.status, 404);
       return true;
@@ -95,7 +73,7 @@ describe('sendMessage', () => {
     // Arrange
     fake.script(reply('Hello Lucia, how can I help?'));
     // Act
-    const result = await sendMessage('lucia', conversationId, 'Hi there');
+    const result = await sendMessage(customers.lucia, conversationId, 'Hi there');
     // Assert
     assert.equal(result.answer, 'Hello Lucia, how can I help?');
     assert.deepEqual(messagesOf(result.runId), [
@@ -103,7 +81,7 @@ describe('sendMessage', () => {
       { role: 'assistant', content: 'Hello Lucia, how can I help?' },
     ]);
     assert.deepEqual(runOf(result.runId), {
-      user_id: 'lucia',
+      user_id: customers.lucia,
       conversation_id: conversationId,
       status: 'completed',
       error: null,
@@ -114,7 +92,7 @@ describe('sendMessage', () => {
     // Arrange
     fake.script(reply('Done.'));
     // Act
-    await sendMessage('lucia', conversationId, 'What is my balance?');
+    await sendMessage(customers.lucia, conversationId, 'What is my balance?');
     // Assert
     const call = fake.requests.find((r) => r.path.endsWith('/responses'))!;
     assert.deepEqual(call.body.input.at(-1), { role: 'user', content: 'What is my balance?' });
@@ -125,7 +103,7 @@ describe('sendMessage', () => {
     // Arrange
     fake.script(reply('Done.'));
     // Act
-    await sendMessage('lucia', conversationId, 'Hello');
+    await sendMessage(customers.lucia, conversationId, 'Hello');
     // Assert
     const call = fake.requests.find((r) => r.path.endsWith('/responses'))!;
     const names = call.body.tools.map((t: { name: string }) => t.name);
@@ -140,7 +118,7 @@ describe('sendMessage', () => {
     // Arrange
     fake.script(reply('Done.'));
     // Act
-    await sendMessage('lucia', conversationId, 'How do transfers work?');
+    await sendMessage(customers.lucia, conversationId, 'How do transfers work?');
     // Assert
     const embedding = fake.requests.find((r) => r.path.endsWith('/embeddings'))!;
     assert.deepEqual(embedding.body.input, ['How do transfers work?']);
@@ -158,7 +136,7 @@ describe('sendMessage', () => {
     // Arrange
     fake.script(toolCall('list_accounts', {}, 'call-accounts'), reply('You have two accounts.'));
     // Act
-    const result = await sendMessage('lucia', conversationId, 'Which accounts do I have?');
+    const result = await sendMessage(customers.lucia, conversationId, 'Which accounts do I have?');
     // Assert
     const calls = fake.requests.filter((r) => r.path.endsWith('/responses'));
     assert.equal(calls.length, 2);
@@ -168,7 +146,7 @@ describe('sendMessage', () => {
     assert.equal(output.call_id, 'call-accounts');
     assert.deepEqual(
       JSON.parse(output.output).accounts.map((a: { id: string }) => a.id),
-      ['acc-lucia', 'acc-lucia-savings'],
+      [accounts.lucia, accounts.luciaSavings],
     );
     assert.equal(result.answer, 'You have two accounts.');
   });
@@ -177,13 +155,13 @@ describe('sendMessage', () => {
     // Arrange
     fake.script(toolCall('list_accounts', {}), reply('Done.'));
     // Act
-    const result = await sendMessage('lucia', conversationId, 'Accounts?');
+    const result = await sendMessage(customers.lucia, conversationId, 'Accounts?');
     // Assert
     assert.deepEqual(
-      appDb()
-        .prepare("SELECT kind FROM events WHERE run_id=? AND kind LIKE 'tool.%' ORDER BY rowid")
-        .all(result.runId),
-      [{ kind: 'tool.started' }, { kind: 'tool.completed' }],
+      eventsFor(result.runId)
+        .map((e) => e.kind)
+        .filter((kind) => kind.startsWith('tool.')),
+      ['tool.started', 'tool.completed'],
     );
   });
 
@@ -192,7 +170,7 @@ describe('sendMessage', () => {
     const providerError = { status: 429, error: 'Rate limited' };
     fake.script(providerError, providerError, providerError);
     // Act & Assert
-    await assert.rejects(sendMessage('lucia', conversationId, 'Hello'), (e) => {
+    await assert.rejects(sendMessage(customers.lucia, conversationId, 'Hello'), (e) => {
       assert.ok(e instanceof HttpError);
       assert.equal(e.status, 502);
       assert.match(e.message, /AI provider returned 429/);
@@ -211,9 +189,9 @@ describe('sendMessage', () => {
   it('should reject a second message while the conversation is still answering', async () => {
     // Arrange
     fake.script(reply('First answer.'));
-    const first = sendMessage('lucia', conversationId, 'First');
+    const first = sendMessage(customers.lucia, conversationId, 'First');
     // Act & Assert
-    await assert.rejects(sendMessage('lucia', conversationId, 'Second'), (e) => {
+    await assert.rejects(sendMessage(customers.lucia, conversationId, 'Second'), (e) => {
       assert.ok(e instanceof HttpError);
       assert.equal(e.status, 409);
       return true;
@@ -224,9 +202,9 @@ describe('sendMessage', () => {
   it('should accept a new message once the previous one has finished', async () => {
     // Arrange
     fake.script(reply('First answer.'), reply('Second answer.'));
-    await sendMessage('lucia', conversationId, 'First');
+    await sendMessage(customers.lucia, conversationId, 'First');
     // Act
-    const result = await sendMessage('lucia', conversationId, 'Second');
+    const result = await sendMessage(customers.lucia, conversationId, 'Second');
     // Assert
     assert.equal(result.answer, 'Second answer.');
   });
@@ -240,22 +218,9 @@ describe('answerWithEvidence', () => {
   after(() => fake.close());
   beforeEach(() => fake.reset());
 
-  const sources: SearchResult[] = [
-    {
-      id: 'chunk-1',
-      documentId: 'doc-fees',
-      text: 'Transfers between Banana Bank accounts are free.',
-      title: 'Fees',
-      version: 2,
-      validFrom: '2026-01-01',
-      validTo: null,
-      audience: 'public',
-      score: 0.9,
-    },
-  ];
-
   it('should return the model answer for the question', async () => {
     // Arrange
+    const sources = [searchResultFactory.build()];
     fake.script(reply('Transfers are free.'));
     // Act
     const result = await answerWithEvidence('Are transfers free?', sources);
@@ -265,9 +230,10 @@ describe('answerWithEvidence', () => {
 
   it('should ground the model on the supplied sources and question', async () => {
     // Arrange
+    const source = searchResultFactory.build();
     fake.script(reply('Transfers are free.'));
     // Act
-    await answerWithEvidence('Are transfers free?', sources);
+    await answerWithEvidence('Are transfers free?', [source]);
     // Assert
     const [call] = fake.requests.filter((r) => r.path.endsWith('/responses'));
     assert.equal(call.body.input, 'Are transfers free?');
@@ -278,8 +244,7 @@ describe('answerWithEvidence', () => {
     assert.ok(
       excerpts.some(
         (e: { documentId: string; text: string }) =>
-          e.documentId === 'doc-fees' &&
-          e.text === 'Transfers between Banana Bank accounts are free.',
+          e.documentId === source.documentId && e.text === source.text,
       ),
     );
     assert.equal(fake.requests.filter((r) => r.path.endsWith('/embeddings')).length, 0);

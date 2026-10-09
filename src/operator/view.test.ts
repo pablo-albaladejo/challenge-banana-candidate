@@ -6,7 +6,16 @@ import { HttpError } from '../auth';
 import { config } from '../config';
 import { recordEvent } from '../telemetry';
 import { resetBank, startBank, stopBank } from '../../tests/support/bank';
-const caseId = 'case-routine-lucia-guide';
+import { eventDataFactory, toolContextFactory } from '../../tests/fixtures/factories';
+import {
+  cases,
+  conversations,
+  customers,
+  historicTransfer,
+  operators,
+  unknown,
+} from '../../tests/fixtures/world';
+const caseId = cases.luciaGuide;
 const rejectsWith = (status: number) => (e: unknown) => {
   assert.ok(e instanceof HttpError);
   assert.equal(e.status, status);
@@ -21,45 +30,45 @@ describe('caseDetail', () => {
   after(stopBank);
   it('should return the incident and its customer to an operator', async () => {
     // Arrange
-    const operator = 'marta';
+    const operator = operators.marta;
     // Act
     const detail = await caseDetail(operator, caseId);
     // Assert
     assert.equal(detail.incident.id, caseId);
-    assert.equal(detail.incident.user_id, 'lucia');
-    assert.equal(detail.customer?.id, 'lucia');
+    assert.equal(detail.incident.user_id, customers.lucia);
+    assert.equal(detail.customer?.id, customers.lucia);
   });
   it('should include the latest message of the case conversation', async () => {
     // Arrange
-    const latest = 'conv-lucia-activity-3-message-2';
+    const latest = `${conversations.luciaGuide}-message-2`;
     // Act
-    const detail = await caseDetail('pablo', caseId);
+    const detail = await caseDetail(operators.pablo, caseId);
     // Assert
     assert.equal((detail.lastMessage as { id: string }).id, latest);
   });
   it('should reject customers with 403', async () => {
     // Arrange
-    const customer = 'lucia';
+    const customer = customers.lucia;
     // Act & Assert
     await assert.rejects(caseDetail(customer, caseId), rejectsWith(403));
   });
   it('should reject unknown people with 403', async () => {
     // Arrange
-    const stranger = 'mallory';
+    const stranger = unknown.person;
     // Act & Assert
     await assert.rejects(caseDetail(stranger, caseId), rejectsWith(403));
   });
   it('should report an unknown case as 404', async () => {
     // Arrange
-    const missing = 'case-does-not-exist';
+    const missing = unknown.case;
     // Act & Assert
-    await assert.rejects(caseDetail('marta', missing), rejectsWith(404));
+    await assert.rejects(caseDetail(operators.marta, missing), rejectsWith(404));
   });
   it('should include the whole case conversation in order', async () => {
     // Arrange
-    const expected = [0, 1, 2].map((i) => `conv-lucia-activity-3-message-${i}`);
+    const expected = [0, 1, 2].map((i) => `${conversations.luciaGuide}-message-${i}`);
     // Act
-    const detail = await caseDetail('marta', caseId);
+    const detail = await caseDetail(operators.marta, caseId);
     // Assert
     assert.deepEqual(
       detail.history.map((m: { id: string }) => m.id),
@@ -68,43 +77,44 @@ describe('caseDetail', () => {
   });
   it('should include the transfer intents of the case conversation', async () => {
     // Arrange
-    const supportCase = 'case-lucia';
+    const supportCase = cases.lucia;
     // Act
-    const detail = await caseDetail('marta', supportCase);
+    const detail = await caseDetail(operators.marta, supportCase);
     // Assert
     assert.deepEqual(
       detail.intents.map((i: { id: string; payload: { amountCents: number } }) => [
         i.id,
         i.payload.amountCents,
       ]),
-      [['intent-historic-lucia', 8500]],
+      [[historicTransfer.intentId, historicTransfer.amountCents]],
     );
   });
   it('should show what the bank verified for each intent reference', async () => {
     // Arrange
-    const supportCase = 'case-lucia';
+    const supportCase = cases.lucia;
     // Act
-    const detail = await caseDetail('marta', supportCase);
+    const detail = await caseDetail(operators.marta, supportCase);
     // Assert
     const operation = detail.bank!.operations.find(
-      (o: { reference: string }) => o.reference === 'ref-historic-lucia',
+      (o: { reference: string }) => o.reference === historicTransfer.reference,
     );
     assert.equal(operation?.status, 'completed');
   });
   it('should include the agent events recorded for the case conversation', async () => {
     // Arrange
+    const data = eventDataFactory.build({ status: 'completed' });
     recordEvent(
-      { userId: 'lucia', conversationId: 'conv-lucia-support', runId: 'run-case', intentId: 'i' },
+      toolContextFactory.build({ conversationId: conversations.luciaSupport }),
       'tool.completed',
-      { tool: 'list_accounts', status: 'completed' },
+      data,
     );
     // Act
-    const detail = await caseDetail('marta', 'case-lucia');
+    const detail = await caseDetail(operators.marta, cases.lucia);
     // Assert
     assert.ok(
       detail.events.some(
         (e: { kind: string; data: { tool: string } }) =>
-          e.kind === 'tool.completed' && e.data.tool === 'list_accounts',
+          e.kind === 'tool.completed' && e.data.tool === data.tool,
       ),
     );
   });
@@ -112,7 +122,7 @@ describe('caseDetail', () => {
     // Arrange
     const quietCase = caseId;
     // Act
-    const detail = await caseDetail('marta', quietCase);
+    const detail = await caseDetail(operators.marta, quietCase);
     // Assert
     assert.deepEqual(detail.events, []);
     assert.match(detail.gaps!, /no agent activity/i);
@@ -124,7 +134,7 @@ describe('caseDetail', () => {
     // Act
     let detail;
     try {
-      detail = await caseDetail('marta', 'case-lucia');
+      detail = await caseDetail(operators.marta, cases.lucia);
     } finally {
       config.bankUrl = original;
     }
@@ -134,11 +144,11 @@ describe('caseDetail', () => {
   });
   it('should show a historic intent as the bank verified it', async () => {
     // Arrange
-    const supportCase = 'case-lucia';
+    const supportCase = cases.lucia;
     // Act
-    const detail = await caseDetail('marta', supportCase);
+    const detail = await caseDetail(operators.marta, supportCase);
     // Assert
-    const intent = detail.intents.find((i: { id: string }) => i.id === 'intent-historic-lucia')!;
+    const intent = detail.intents.find((i: { id: string }) => i.id === historicTransfer.intentId)!;
     assert.equal(intent.status, 'completed');
   });
 });

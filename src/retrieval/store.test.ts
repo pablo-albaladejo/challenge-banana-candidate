@@ -5,32 +5,21 @@ import { embeddingKey } from './embeddings';
 import { seedApp } from '../seed';
 import { appDb } from '../db';
 import { config } from '../config';
-import type { Chunk } from '../types';
+import { chunkFactory } from '../../tests/fixtures/factories';
 const meta = (key: string) =>
   (appDb().prepare('SELECT value FROM meta WHERE key=?').get(key) as { value: string } | undefined)
     ?.value;
-const chunk = (id: string, vector: number[]): Chunk => ({
-  id,
-  documentId: 'doc-test',
-  text: `text ${id}`,
-  title: null,
-  version: null,
-  validFrom: null,
-  validTo: null,
-  audience: 'public',
-  vector,
-});
 describe('replaceChunks', () => {
   beforeEach(() => seedApp());
   it('should replace the whole index and record its model and dimensions', () => {
     // Arrange
-    const chunks = [chunk('b', [0, 1, 0]), chunk('a', [1, 0, 0])];
+    const chunks = chunkFactory.buildList(2, {}, { dimensions: 3 });
     // Act
     replaceChunks(chunks, { model: 'test-model', dimensions: 3 });
     // Assert
     assert.deepEqual(
       allChunks().map((c) => c.id),
-      ['a', 'b'],
+      chunks.map((c) => c.id).sort(),
     );
     assert.equal(meta('index-model'), 'test-model');
     assert.equal(meta('index-dimensions'), '3');
@@ -38,7 +27,10 @@ describe('replaceChunks', () => {
   it('should reject chunks with the wrong dimensions and keep the previous index', () => {
     // Arrange
     const before = allChunks();
-    const chunks = [chunk('ok', [1, 0, 0]), chunk('bad', [1, 0])];
+    const chunks = [
+      chunkFactory.build({}, { dimensions: 3 }),
+      chunkFactory.build({}, { dimensions: 2 }),
+    ];
     // Act & Assert
     assert.throws(() => replaceChunks(chunks, { model: 'test-model', dimensions: 3 }), {
       message: 'Incomplete index.',
@@ -86,7 +78,7 @@ describe('restoreIndex', () => {
     // Arrange
     const before = allChunks();
     const dump = exportIndex();
-    replaceChunks([chunk('placeholder', [1])], { model: 'other', dimensions: 1 });
+    replaceChunks([chunkFactory.build({}, { dimensions: 1 })], { model: 'other', dimensions: 1 });
     // Act
     restoreIndex(dump);
     // Assert

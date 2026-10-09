@@ -123,6 +123,7 @@ so `searchDocuments(<exact chunk text>)` ranks that chunk first **without any mo
 | `network.ts` | `startLossyBank((method, path) => boolean)`: real network fault injection between app and bank (responses lost after the bank committed). Close it in `finally`.                     |
 | `openai.ts`  | `startFakeOpenAI()` → `fake.script(toolCall(name, args), reply(text))`, `fake.requests`, `fake.embed(text, vector)`, `fake.reset()`, `fake.close()`                                  |
 | `api.ts`     | `api('POST', 'actions', { as: 'lucia', body })` → `{ status, body }`, calling `route.ts` in-process with a signed session                                                            |
+| `db.ts`      | `intentRow(id)`, `approvalsFor(intentId)`, `runOf(runId)`, `latestRun()`, `messagesOf(runId)`, `events()`, `eventsFor(runId)`: read what the app stored                              |
 
 ```ts
 describe('transferMoney', () => {
@@ -147,6 +148,54 @@ describe('transferMoney', () => {
 
 `tests/setup.ts` reserves a free bank port per test file before `src/config.ts` loads, so files run
 in parallel without colliding.
+
+## Test data: world, factories, db readers
+
+Test data comes from three places, each with one job. Do not write per-file builders
+(`context()`, `input`, `chunk()`, `fixture()`, `intentRow()`…): use these.
+
+| Where                         | What                                                                                                                                                                                                                          | Use for                                                     |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `tests/fixtures/world.ts`     | Typed constants of the seeded world: `customers`, `operators`, `accounts`, `conversations`, `cases`, `historicTransfer`, `unknown` ids, `counts`, `money` limits                                                              | Every id the bank or the app seed knows                     |
+| `tests/fixtures/factories.ts` | Rosie + Faker: `toolContextFactory`, `transferInputFactory` (valid: lucia `acc-lucia` → `acc-bruno`), `intentFactory` + `persistIntent()`, `searchResultFactory`, `chunkFactory`, `documentRecordFactory`, `eventDataFactory` | Objects a test builds; override only what the case is about |
+| `tests/support/db.ts`         | Readers of the app database: `intentRow`, `approvalsFor`, `runOf`, `latestRun`, `messagesOf`, `events`, `eventsFor`                                                                                                           | Asserting what the application stored                       |
+
+```ts
+it('should move the amount between both accounts exactly once', async () => {
+  // Arrange
+  const input = transferInputFactory.build();
+  const ctx = toolContextFactory.build();
+  const fromBefore = await balanceOf(input.fromAccountId);
+  // Act
+  await confirmed(ctx, input);
+  // Assert
+  assert.equal(await balanceOf(input.fromAccountId), fromBefore - input.amountCents);
+});
+```
+
+- **Never fake bank ids.** The real bank validates customers, accounts and references, so Faker never
+  invents them: they come from `world.ts`. A made-up id tests a not-found path, and then it is
+  `unknown.account`, `unknown.person`, … on purpose.
+- Faker fills only free values: amounts, concepts, texts, generated run/intent ids. Default amounts
+  stay well below `money.lowestBalanceCents`, so a default transfer never fails for funds. A case
+  about limits names them explicitly (`money.maxTransferCents`, `input.amountCents + 1`).
+- **Assert against the built object, never a literal Faker could change**:
+  `assert.equal(op.amountCents, input.amountCents)`, not `assert.equal(op.amountCents, 1234)`.
+- Build in `// Arrange`, one object per case. Shared module-level fixtures hide what a case uses.
+
+### Random seed
+
+Every `npm test` run uses a **new random Faker seed**, printed at the start and end of the run:
+
+```
+Test seed 1424114291 · reproduce with TEST_SEED=1424114291 npm test
+```
+
+`TEST_SEED=<n> npm test` replays a run exactly. `tests/global-setup.ts` (`--test-global-setup`) runs
+once in the node:test parent and sets `TEST_SEED`; every test file runs in a child process that
+inherits it, and `tests/setup.ts` seeds Faker with it. A single-file run without `TEST_SEED` picks
+and prints its own seed. A failure that only appears under some seed is a factory bug (a range
+that can break a valid case): fix the factory, not the test.
 
 ## E2E (Playwright)
 

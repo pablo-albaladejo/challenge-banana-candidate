@@ -1,91 +1,78 @@
 import { after, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { faker } from '@faker-js/faker';
 import { reconcileIntent } from './reconcile';
-import { appDb } from '../db';
 import { config } from '../config';
 import { bankSnapshot, resetBank, startBank, stopBank } from '../../tests/support/bank';
-type IntentRow = { status: string; operation_id: string | null; error: string | null };
-const payload = {
-  fromAccountId: 'acc-lucia',
-  toAccountId: 'acc-bruno',
-  amountCents: 8500,
-  concept: 'Team dinner',
-};
-function intent(status: string, reference: string | null, error: string | null = null) {
-  const id = `intent-${randomUUID()}`;
-  appDb()
-    .prepare('INSERT INTO intents VALUES(?,?,?,?,?,?,?,?,?,?)')
-    .run(
-      id,
-      'lucia',
-      null,
-      'run-test',
-      JSON.stringify(payload),
-      status,
-      reference,
-      null,
-      error,
-      new Date().toISOString(),
-    );
-  return id;
-}
-const row = (id: string) =>
-  appDb().prepare('SELECT status,operation_id,error FROM intents WHERE id=?').get(id) as IntentRow;
-const historicReference = async () =>
-  (await bankSnapshot()).operations.find((o) => o.userId === 'lucia')!.reference;
+import { intentRow } from '../../tests/support/db';
+import { persistIntent } from '../../tests/fixtures/factories';
+import { customers, historicTransfer } from '../../tests/fixtures/world';
+const lostResponse = 'No response received from the bank.';
+const unsentReference = () => `ref-${faker.string.uuid()}`;
 describe('reconcileIntent', () => {
   before(startBank);
   after(stopBank);
   beforeEach(() => resetBank());
   it('should mark an unknown intent completed when the bank has its operation', async () => {
     // Arrange
-    const reference = await historicReference();
-    const id = intent('unknown', reference, 'No response received from the bank.');
+    const { id } = persistIntent({
+      status: 'unknown',
+      bankReference: historicTransfer.reference,
+      error: lostResponse,
+    });
     // Act
-    await reconcileIntent('lucia', id);
+    await reconcileIntent(customers.lucia, id);
     // Assert
-    const operation = (await bankSnapshot()).operations.find((o) => o.reference === reference)!;
-    assert.deepEqual(row(id), { status: 'completed', operation_id: operation.id, error: null });
+    const operation = (await bankSnapshot()).operations.find(
+      (o) => o.reference === historicTransfer.reference,
+    )!;
+    const { status, operation_id, error } = intentRow(id)!;
+    assert.deepEqual(
+      { status, operation_id, error },
+      { status: 'completed', operation_id: operation.id, error: null },
+    );
   });
   it('should verify a transport failure recorded as failed against the bank', async () => {
     // Arrange
-    const reference = await historicReference();
-    const id = intent('failed', reference, 'No response received from the bank.');
+    const { id } = persistIntent({
+      status: 'failed',
+      bankReference: historicTransfer.reference,
+      error: lostResponse,
+    });
     // Act
-    await reconcileIntent('lucia', id);
+    await reconcileIntent(customers.lucia, id);
     // Assert
-    assert.equal(row(id).status, 'completed');
+    assert.equal(intentRow(id)!.status, 'completed');
   });
   it('should mark an unknown intent failed when the bank verifies it has no operation', async () => {
     // Arrange
-    const id = intent('unknown', `ref-${randomUUID()}`);
+    const { id } = persistIntent({ status: 'unknown', bankReference: unsentReference() });
     // Act
-    await reconcileIntent('lucia', id);
+    await reconcileIntent(customers.lucia, id);
     // Assert
-    assert.equal(row(id).status, 'failed');
-    assert.match(row(id).error!, /no operation/i);
+    assert.equal(intentRow(id)!.status, 'failed');
+    assert.match(intentRow(id)!.error!, /no operation/i);
   });
   it('should keep the intent unknown while the bank cannot be reached', async () => {
     // Arrange
-    const id = intent('unknown', `ref-${randomUUID()}`);
+    const { id } = persistIntent({ status: 'unknown', bankReference: unsentReference() });
     const original = config.bankUrl;
     config.bankUrl = 'http://127.0.0.1:9';
     // Act
     try {
-      await reconcileIntent('lucia', id);
+      await reconcileIntent(customers.lucia, id);
     } finally {
       config.bankUrl = original;
     }
     // Assert
-    assert.equal(row(id).status, 'unknown');
+    assert.equal(intentRow(id)!.status, 'unknown');
   });
   it('should leave intents that were never sent to the bank untouched', async () => {
     // Arrange
-    const id = intent('requires_confirmation', null);
+    const { id } = persistIntent({ status: 'requires_confirmation' });
     // Act
-    await reconcileIntent('lucia', id);
+    await reconcileIntent(customers.lucia, id);
     // Assert
-    assert.equal(row(id).status, 'requires_confirmation');
+    assert.equal(intentRow(id)!.status, 'requires_confirmation');
   });
 });

@@ -1,0 +1,145 @@
+// Rosie factories for the objects tests build. Faker fills only free values (amounts, concepts,
+// texts, generated ids); every bank-known id comes from world.ts, because the real bank validates
+// it. Faker is seeded once per run in tests/setup.ts, so a failing build reproduces with TEST_SEED.
+// Assert against the object a factory returned, never against a literal Faker could change.
+import { Factory } from 'rosie';
+import { faker } from '@faker-js/faker';
+import { appDb } from '../../src/db';
+import type {
+  Chunk,
+  DocumentRecord,
+  SearchResult,
+  ToolContext,
+  TransferInput,
+} from '../../src/types';
+import { accounts, customers, money } from './world';
+
+const isoDate = () =>
+  faker.date.between({ from: '2025-01-01', to: '2026-06-30' }).toISOString().slice(0, 10);
+const vector = (dimensions: number) =>
+  Array.from({ length: dimensions }, () => faker.number.float({ min: -1, max: 1 }));
+
+/** The server-side identity of one agent run: lucia, outside a conversation, fresh ids. */
+export const toolContextFactory = new Factory<ToolContext>()
+  .attr('userId', customers.lucia)
+  .attr('conversationId', null)
+  .attr('runId', () => `run-${faker.string.uuid()}`)
+  .attr('intentId', () => `intent-${faker.string.uuid()}`);
+
+/**
+ * A valid transfer: lucia's main account to bruno's. The amount stays far below the lowest seeded
+ * balance, so a default transfer never fails for funds and several can run in one test.
+ */
+export const transferInputFactory = new Factory<TransferInput>()
+  .attr('fromAccountId', accounts.lucia)
+  .attr('toAccountId', accounts.bruno)
+  .attr('amountCents', () =>
+    faker.number.int({ min: 100, max: Math.floor(money.lowestBalanceCents / 2) }),
+  )
+  .attr('concept', () => faker.commerce.productName());
+
+export type IntentStatus =
+  | 'requires_confirmation'
+  | 'processing'
+  | 'completed'
+  | 'unknown'
+  | 'failed';
+
+/** A row of the app `intents` table, in camelCase. */
+export type Intent = {
+  id: string;
+  userId: string;
+  conversationId: string | null;
+  runId: string | null;
+  payload: TransferInput;
+  status: IntentStatus;
+  bankReference: string | null;
+  operationId: string | null;
+  error: string | null;
+  createdAt: string;
+};
+
+export const intentFactory = new Factory<Intent>()
+  .attr('id', () => `intent-${faker.string.uuid()}`)
+  .attr('userId', customers.lucia)
+  .attr('conversationId', null)
+  .attr('runId', () => `run-${faker.string.uuid()}`)
+  .attr('payload', () => transferInputFactory.build())
+  .attr('status', 'processing')
+  .attr('bankReference', null)
+  .attr('operationId', null)
+  .attr('error', null)
+  .attr('createdAt', () => new Date().toISOString());
+
+/** Builds an intent and stores it, as transferMoney does before it dispatches to the bank. */
+export function persistIntent(attributes: Partial<Intent> = {}): Intent {
+  const intent = intentFactory.build(attributes);
+  appDb()
+    .prepare('INSERT INTO intents VALUES(?,?,?,?,?,?,?,?,?,?)')
+    .run(
+      intent.id,
+      intent.userId,
+      intent.conversationId,
+      intent.runId,
+      JSON.stringify(intent.payload),
+      intent.status,
+      intent.bankReference,
+      intent.operationId,
+      intent.error,
+      intent.createdAt,
+    );
+  return intent;
+}
+
+/** A retrieved passage, as search returns it and the prompt cites it. */
+export const searchResultFactory = new Factory<SearchResult>()
+  .attr('id', () => `chunk-${faker.string.hexadecimal({ length: 24, casing: 'lower', prefix: '' })}`)
+  .attr('documentId', () => `doc-${faker.string.alphanumeric({ length: 8, casing: 'lower' })}`)
+  .attr('text', () => faker.lorem.sentence())
+  .attr('title', () => faker.lorem.words(2))
+  .attr('version', () => faker.number.int({ min: 1, max: 5 }))
+  .attr('validFrom', isoDate)
+  .attr('validTo', null)
+  .attr('audience', 'public')
+  .attr('score', () => faker.number.float({ min: 0, max: 1 }));
+
+/** An indexed chunk. `{ dimensions }` sizes its vector (1536 like the real index by default). */
+export const chunkFactory = new Factory<Chunk>()
+  .option('dimensions', 1536)
+  .attr('id', () => `chunk-${faker.string.hexadecimal({ length: 24, casing: 'lower', prefix: '' })}`)
+  .attr('documentId', () => `doc-${faker.string.alphanumeric({ length: 8, casing: 'lower' })}`)
+  .attr('text', () => faker.lorem.sentence())
+  .attr('title', () => faker.lorem.words(2))
+  .attr('version', () => faker.number.int({ min: 1, max: 5 }))
+  .attr('validFrom', isoDate)
+  .attr('validTo', null)
+  .attr('audience', 'public')
+  .attr('vector', ['dimensions'], (dimensions: number) => vector(dimensions));
+
+/** A corpus document as the manifest describes it: public, current, stored as Markdown. */
+export const documentRecordFactory = new Factory<DocumentRecord>()
+  .attr('id', () => `doc-${faker.string.alphanumeric({ length: 8, casing: 'lower' })}`)
+  .attr('title', () => faker.lorem.words(3))
+  .attr('file', ['id'], (id: string) => `${id}.md`)
+  .attr('version', () => faker.number.int({ min: 1, max: 5 }))
+  .attr('validFrom', isoDate)
+  .attr('validTo', null)
+  .attr('audience', 'public')
+  .attr('family', () =>
+    faker.helpers.arrayElement(['fees', 'conditions', 'operations', 'faq', 'procedure']),
+  );
+
+export type EventData = { tool: string; status: string; [key: string]: unknown };
+
+/** The data of a telemetry event about one tool call. */
+export const eventDataFactory = new Factory<EventData>()
+  .attr('tool', () =>
+    faker.helpers.arrayElement([
+      'list_accounts',
+      'search_documents',
+      'transfer_money',
+      'operation_status',
+      'request_human',
+    ]),
+  )
+  .attr('status', () => faker.helpers.arrayElement(['started', 'completed', 'failed']));

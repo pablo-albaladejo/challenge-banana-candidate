@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { bankRequest, BankError } from './client';
 import { config } from '../config';
 import { resetBank, startBank, stopBank } from '../../tests/support/bank';
+import { faker } from '@faker-js/faker';
+import { transferInputFactory } from '../../tests/fixtures/factories';
+import { accounts, customers } from '../../tests/fixtures/world';
 import type { Account } from '../types';
 describe('bankRequest', () => {
   before(startBank);
@@ -10,31 +13,31 @@ describe('bankRequest', () => {
   beforeEach(() => resetBank());
   it('should return the actor accounts through a signed request', async () => {
     // Arrange
-    const actor = 'lucia';
+    const actor = customers.lucia;
     // Act
-    const accounts = await bankRequest<Account[]>(actor, '/v1/accounts');
+    const held = await bankRequest<Account[]>(actor, '/v1/accounts');
     // Assert
     assert.deepEqual(
-      accounts.map((a) => a.id),
-      ['acc-lucia', 'acc-lucia-savings'],
+      held.map((a) => a.id),
+      [accounts.lucia, accounts.luciaSavings],
     );
-    assert.ok(accounts.every((a) => a.userId === actor));
+    assert.ok(held.every((a) => a.userId === actor));
   });
   it('should surface bank rejections as a BankError with the bank status', async () => {
     // Arrange
     const foreignTransfer = {
-      fromAccountId: 'acc-bruno',
-      toAccountId: 'acc-lucia',
-      amountCents: 100,
-      concept: 'Not mine',
-      reference: 'client-test-foreign',
+      ...transferInputFactory.build({ fromAccountId: accounts.bruno, toAccountId: accounts.lucia }),
+      reference: `client-test-${faker.string.uuid()}`,
     };
     // Act & Assert
-    await assert.rejects(bankRequest('lucia', '/v1/transfers', 'POST', foreignTransfer), (e) => {
-      assert.ok(e instanceof BankError);
-      assert.equal(e.status, 403);
-      return true;
-    });
+    await assert.rejects(
+      bankRequest(customers.lucia, '/v1/transfers', 'POST', foreignTransfer),
+      (e) => {
+        assert.ok(e instanceof BankError);
+        assert.equal(e.status, 403);
+        return true;
+      },
+    );
   });
   it('should report an unreachable bank as a 504 BankError', async () => {
     // Arrange
@@ -42,7 +45,7 @@ describe('bankRequest', () => {
     config.bankUrl = 'http://127.0.0.1:9';
     // Act & Assert
     try {
-      await assert.rejects(bankRequest('lucia', '/v1/accounts'), (e) => {
+      await assert.rejects(bankRequest(customers.lucia, '/v1/accounts'), (e) => {
         assert.ok(e instanceof BankError);
         assert.equal(e.status, 504);
         return true;

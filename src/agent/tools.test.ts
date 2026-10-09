@@ -1,28 +1,24 @@
 import { after, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
 import { runTool, toolDefinitions } from './tools';
 import { appDb } from '../db';
 import { seedApp } from '../seed';
 import { allChunks } from '../retrieval/store';
 import { resetBank, startBank, stopBank } from '../../tests/support/bank';
+import { eventsFor } from '../../tests/support/db';
+import { toolContextFactory } from '../../tests/fixtures/factories';
+import {
+  accounts,
+  conversations,
+  customers,
+  historicTransfer,
+  unknown,
+} from '../../tests/fixtures/world';
 import type { Account, ToolContext } from '../types';
 
-const context = (overrides: Partial<ToolContext> = {}): ToolContext => ({
-  userId: 'lucia',
-  conversationId: 'conv-lucia-welcome',
-  runId: `run-${randomUUID()}`,
-  intentId: `intent-${randomUUID()}`,
-  ...overrides,
-});
-
-const eventsFor = (runId: string) =>
-  (
-    appDb().prepare('SELECT kind,data FROM events WHERE run_id=? ORDER BY rowid').all(runId) as {
-      kind: string;
-      data: string;
-    }[]
-  ).map((e) => ({ kind: e.kind, data: JSON.parse(e.data) }));
+/** A run in lucia's welcome conversation, where a support case can be opened. */
+const context = (overrides: Partial<ToolContext> = {}) =>
+  toolContextFactory.build({ conversationId: conversations.luciaWelcome, ...overrides });
 
 describe('toolDefinitions', () => {
   it('should expose the core strict agent tools', () => {
@@ -72,22 +68,22 @@ describe('runTool', () => {
     // Assert
     assert.deepEqual(
       result.accounts.map((a) => a.id),
-      ['acc-lucia', 'acc-lucia-savings'],
+      [accounts.lucia, accounts.luciaSavings],
     );
     assert.ok(result.contacts.length > 0);
-    assert.ok(result.contacts.every((c) => c.userId !== 'lucia'));
+    assert.ok(result.contacts.every((c) => c.userId !== ctx.userId));
   });
 
   it('should resolve the account holder from the context even when the arguments name another user', async () => {
     // Arrange
-    const ctx = context({ userId: 'bruno', conversationId: 'conv-bruno-welcome' });
+    const ctx = context({ userId: customers.bruno, conversationId: conversations.brunoWelcome });
     // Act
-    const result = (await runTool('list_accounts', { userId: 'lucia' }, ctx)) as {
+    const result = (await runTool('list_accounts', { userId: customers.lucia }, ctx)) as {
       accounts: Account[];
     };
     // Assert
     assert.ok(result.accounts.length > 0);
-    assert.ok(result.accounts.every((a) => a.userId === 'bruno'));
+    assert.ok(result.accounts.every((a) => a.userId === ctx.userId));
   });
 
   it('should return the matching documentation chunk as the top source', async () => {
@@ -130,7 +126,7 @@ describe('runTool', () => {
     // Act
     const result = (await runTool(
       'operation_status',
-      { reference: 'ref-historic-lucia' },
+      { reference: historicTransfer.reference },
       ctx,
     )) as {
       id: string;
@@ -139,9 +135,9 @@ describe('runTool', () => {
       status: string;
     };
     // Assert
-    assert.equal(result.id, 'op-historic-lucia');
-    assert.equal(result.userId, 'lucia');
-    assert.equal(result.amountCents, 8500);
+    assert.equal(result.id, historicTransfer.operationId);
+    assert.equal(result.userId, ctx.userId);
+    assert.equal(result.amountCents, historicTransfer.amountCents);
     assert.equal(result.status, 'completed');
   });
 
@@ -149,11 +145,7 @@ describe('runTool', () => {
     // Arrange
     const ctx = context();
     // Act
-    const result = (await runTool(
-      'operation_status',
-      { reference: 'ref-does-not-exist' },
-      ctx,
-    )) as {
+    const result = (await runTool('operation_status', { reference: unknown.reference }, ctx)) as {
       status: string;
       error: string;
     };
@@ -164,11 +156,11 @@ describe('runTool', () => {
 
   it("should report another customer's reference as a failed result", async () => {
     // Arrange
-    const ctx = context({ userId: 'bruno', conversationId: 'conv-bruno-welcome' });
+    const ctx = context({ userId: customers.bruno, conversationId: conversations.brunoWelcome });
     // Act
     const result = (await runTool(
       'operation_status',
-      { reference: 'ref-historic-lucia' },
+      { reference: historicTransfer.reference },
       ctx,
     )) as {
       status: string;
@@ -193,8 +185,8 @@ describe('runTool', () => {
         .prepare('SELECT user_id,conversation_id,summary,status FROM incidents WHERE id=?')
         .get(result.incidentId),
       {
-        user_id: 'lucia',
-        conversation_id: 'conv-lucia-welcome',
+        user_id: ctx.userId,
+        conversation_id: ctx.conversationId,
         summary: 'Card blocked',
         status: 'open',
       },
@@ -219,7 +211,7 @@ describe('runTool', () => {
       (
         appDb()
           .prepare('SELECT COUNT(*) n FROM incidents WHERE conversation_id=?')
-          .get('conv-lucia-welcome') as { n: number }
+          .get(conversations.luciaWelcome) as { n: number }
       ).n,
       1,
     );

@@ -1,22 +1,23 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { HttpError, actor, sameOrigin, sessionToken } from './auth';
+import { customers } from '../tests/fixtures/world';
 const withCookie = (cookie: string) =>
-  new Request('http://localhost/api', { headers: { cookie, 'x-user-id': 'bruno' } });
+  new Request('http://localhost/api', { headers: { cookie, 'x-user-id': customers.bruno } });
 const withOrigin = (origin: string) =>
   new Request('http://localhost/api', { headers: { host: '127.0.0.1:3000', origin } });
 describe('actor', () => {
   it('should resolve the actor from the signed session, ignoring identity headers', () => {
     // Arrange
-    const request = withCookie(`banana_actor=${sessionToken('lucia')}`);
+    const request = withCookie(`banana_actor=${sessionToken(customers.lucia)}`);
     // Act
     const person = actor(request);
     // Assert
-    assert.equal(person.id, 'lucia');
+    assert.equal(person.id, customers.lucia);
   });
   it('should reject a forged session signature', () => {
     // Arrange
-    const request = withCookie('banana_actor=bruno.invalid');
+    const request = withCookie(`banana_actor=${customers.bruno}.invalid`);
     // Act & Assert
     assert.throws(() => actor(request));
   });

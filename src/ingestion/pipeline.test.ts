@@ -10,17 +10,8 @@ import { seedApp } from '../seed';
 import { appDb } from '../db';
 import { config } from '../config';
 import { startFakeOpenAI, type FakeOpenAI } from '../../tests/support/openai';
-import type { DocumentRecord } from '../types';
-const fixture = (file: string): DocumentRecord => ({
-  id: 'fixture',
-  title: 'Fixture',
-  file,
-  version: 2,
-  validFrom: '2026-09-01',
-  validTo: null,
-  audience: 'public',
-  family: 'faq',
-});
+import { documentRecordFactory } from '../../tests/fixtures/factories';
+import { counts } from '../../tests/fixtures/world';
 // readDocument resolves fixtures/documents from the cwd, so a temp corpus needs a temp cwd.
 function readFromTempCorpus(file: string, content: string) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'banana-corpus-'));
@@ -29,7 +20,7 @@ function readFromTempCorpus(file: string, content: string) {
   fs.writeFileSync(path.join(root, 'fixtures/documents', file), content);
   process.chdir(root);
   try {
-    return readDocument(fixture(file));
+    return readDocument(documentRecordFactory.build({ file }));
   } finally {
     process.chdir(cwd);
     fs.rmSync(root, { recursive: true, force: true });
@@ -43,8 +34,8 @@ describe('documents', () => {
     // Act
     const docs = documents();
     // Assert
-    assert.equal(docs.length, 80);
-    assert.equal(new Set(docs.map((d) => d.id)).size, 80);
+    assert.equal(docs.length, counts.documents);
+    assert.equal(new Set(docs.map((d) => d.id)).size, counts.documents);
   });
   it('should include internal and expired documents in the manifest', () => {
     // Arrange
@@ -91,7 +82,7 @@ describe('readDocument', () => {
   });
   it('should reject paths that escape the documents folder', () => {
     // Arrange
-    const doc = fixture('../conversations.json');
+    const doc = documentRecordFactory.build({ file: '../conversations.json' });
     // Act & Assert
     assert.throws(() => readDocument(doc), /Invalid document path/);
   });
@@ -117,7 +108,7 @@ describe('ingest', () => {
     const result = await ingest();
     // Assert
     assert.deepEqual(result, {
-      documents: 80,
+      documents: counts.documents,
       chunks: expected.length,
       model: config.embeddingModel,
       dimensions: 1536,
@@ -182,6 +173,9 @@ describe('ingest', () => {
     // Act
     const result = await ingest((message) => messages.push(message));
     // Assert
-    assert.deepEqual(messages, [`80 documents · ${result.chunks} chunks`, 'Index updated.']);
+    assert.deepEqual(messages, [
+      `${counts.documents} documents · ${result.chunks} chunks`,
+      'Index updated.',
+    ]);
   });
 });
