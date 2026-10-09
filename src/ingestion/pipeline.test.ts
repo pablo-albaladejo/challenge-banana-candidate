@@ -150,6 +150,32 @@ describe('ingest', () => {
     // Assert
     assert.equal(embeddingCalls(fake).length, 0);
   });
+  it('should keep the previous index when an embeddings batch fails', async () => {
+    // Arrange
+    appDb().exec('DELETE FROM embedding_cache');
+    const before = allChunks().map((c) => c.id);
+    fake.failEmbeddingsAfter(1);
+    // Act & Assert
+    await assert.rejects(ingest());
+    assert.deepEqual(
+      allChunks().map((c) => c.id),
+      before,
+    );
+  });
+  it('should resume from the batches cached before a failure', async () => {
+    // Arrange
+    appDb().exec('DELETE FROM embedding_cache');
+    fake.failEmbeddingsAfter(1);
+    await assert.rejects(ingest());
+    const cached = new Set(embeddingCalls(fake)[0].body.input as string[]);
+    fake.reset();
+    // Act
+    await ingest();
+    // Assert
+    const resent = embeddingCalls(fake).flatMap((r) => r.body.input as string[]);
+    assert.ok(resent.length > 0);
+    assert.ok(resent.every((text) => !cached.has(text)));
+  });
   it('should report progress with the corpus size and completion', async () => {
     // Arrange
     const messages: string[] = [];

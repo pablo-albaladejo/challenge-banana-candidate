@@ -50,6 +50,8 @@ export type FakeOpenAI = {
   script: (...turns: ScriptedTurn[]) => void;
   /** Overrides the vector returned for an exact embedding input. */
   embed: (text: string, vector: number[]) => void;
+  /** Answers every /v1/embeddings request after the first `succeeding` ones with a 400. */
+  failEmbeddingsAfter: (succeeding: number) => void;
   reset: () => void;
   close: () => Promise<void>;
 };
@@ -64,6 +66,7 @@ export async function startFakeOpenAI(options: FakeOpenAIOptions = {}): Promise<
   const turns: ScriptedTurn[] = [];
   const vectors = new Map<string, number[]>();
   const requests: RecordedRequest[] = [];
+  let embeddingBudget = Infinity;
   const server = http.createServer(async (req, res) => {
     let raw = '';
     for await (const chunk of req) raw += chunk;
@@ -76,6 +79,9 @@ export async function startFakeOpenAI(options: FakeOpenAIOptions = {}): Promise<
     };
     if (path === '/health') return send(200, { ok: true });
     if (path.endsWith('/embeddings')) {
+      // A 400 is not retried by the SDK, so the failure surfaces at once.
+      if (embeddingBudget-- <= 0)
+        return send(400, { error: { message: 'Scripted embeddings failure.' } });
       const inputs: string[] = Array.isArray(body.input) ? body.input : [body.input];
       return send(200, {
         object: 'list',
@@ -113,7 +119,11 @@ export async function startFakeOpenAI(options: FakeOpenAIOptions = {}): Promise<
     requests,
     script: (...next) => turns.push(...next),
     embed: (text, vector) => vectors.set(text, vector),
+    failEmbeddingsAfter: (succeeding) => {
+      embeddingBudget = succeeding;
+    },
     reset: () => {
+      embeddingBudget = Infinity;
       turns.length = 0;
       vectors.clear();
       requests.length = 0;
