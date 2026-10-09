@@ -4,7 +4,7 @@ import type { FunctionTool } from 'openai/resources/responses/responses';
 import { bankRequest } from '../banking/client';
 import { transferMoney } from '../banking/actions';
 import { searchDocuments } from '../retrieval/search';
-import { appDb } from '../db';
+import { insertIncident, openIncidentIn } from '../persistence/incidents';
 import { recordEvent } from '../telemetry';
 import type { ToolContext } from '../types';
 const object = (properties: Record<string, unknown>) => ({
@@ -89,14 +89,17 @@ export async function runTool(name: string, args: unknown, ctx: ToolContext): Pr
       case 'request_human': {
         if (!ctx.conversationId) throw new Error('A conversation is required to open a case.');
         const { summary } = z.object({ summary: z.string().min(1).max(2000) }).parse(args);
-        const existing = appDb()
-          .prepare('SELECT id FROM incidents WHERE conversation_id=? AND status=?')
-          .get(ctx.conversationId, 'open') as { id: string } | undefined;
+        const existing = openIncidentIn(ctx.conversationId);
         const id = existing?.id || randomUUID();
         if (!existing)
-          appDb()
-            .prepare('INSERT INTO incidents VALUES(?,?,?,?,?,?)')
-            .run(id, ctx.userId, ctx.conversationId, summary, 'open', new Date().toISOString());
+          insertIncident({
+            id,
+            userId: ctx.userId,
+            conversationId: ctx.conversationId,
+            summary,
+            status: 'open',
+            createdAt: new Date().toISOString(),
+          });
         result = { status: 'open', incidentId: id };
         break;
       }

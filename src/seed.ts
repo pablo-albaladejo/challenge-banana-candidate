@@ -4,14 +4,16 @@ import { gunzipSync } from 'node:zlib';
 import path from 'node:path';
 import { restoreIndex } from './retrieval/store';
 import { documents } from './ingestion/pipeline';
+import { insertConversation } from './persistence/conversations';
+import { insertMessage } from './persistence/messages';
+import { insertIncident } from './persistence/incidents';
+import { insertIntent } from './persistence/intents';
 export function seedApp() {
   const db = appDb();
   db.transaction(() => {
     db.exec(
       'DELETE FROM messages; DELETE FROM conversations; DELETE FROM incidents; DELETE FROM intents; DELETE FROM approvals; DELETE FROM events; DELETE FROM runs; DELETE FROM chunks; DELETE FROM embedding_cache; DELETE FROM meta;',
     );
-    const conversation = db.prepare('INSERT INTO conversations VALUES(?,?,?,?)');
-    const message = db.prepare('INSERT INTO messages VALUES(?,?,?,?,?,?)');
     const histories: {
       id: string;
       userId: string;
@@ -21,47 +23,52 @@ export function seedApp() {
       case?: { id: string; status: string };
     }[] = JSON.parse(readFileSync(path.resolve('fixtures/conversations.json'), 'utf8'));
     for (const history of histories) {
-      conversation.run(history.id, history.userId, history.title, history.createdAt);
+      insertConversation({
+        id: history.id,
+        userId: history.userId,
+        title: history.title,
+        createdAt: history.createdAt,
+      });
       history.messages.forEach((entry, index) => {
         const at = new Date(Date.parse(history.createdAt) + index * 10000).toISOString();
-        message.run(
-          `${history.id}-message-${index}`,
-          history.id,
-          entry.role,
-          entry.content,
-          at,
-          null,
-        );
+        insertMessage({
+          id: `${history.id}-message-${index}`,
+          conversationId: history.id,
+          role: entry.role,
+          content: entry.content,
+          createdAt: at,
+          runId: null,
+        });
       });
       if (history.case) {
-        db.prepare('INSERT INTO incidents VALUES(?,?,?,?,?,?)').run(
-          history.case.id,
-          history.userId,
-          history.id,
-          history.messages.at(-1)!.content,
-          history.case.status,
-          history.createdAt,
-        );
+        insertIncident({
+          id: history.case.id,
+          userId: history.userId,
+          conversationId: history.id,
+          summary: history.messages.at(-1)!.content,
+          status: history.case.status,
+          createdAt: history.createdAt,
+        });
       }
     }
-    db.prepare('INSERT INTO intents VALUES(?,?,?,?,?,?,?,?,?,?)').run(
-      'intent-historic-lucia',
-      'lucia',
-      'conv-lucia-support',
-      'run-historic-lucia',
-      JSON.stringify({
+    insertIntent({
+      id: 'intent-historic-lucia',
+      userId: 'lucia',
+      conversationId: 'conv-lucia-support',
+      runId: 'run-historic-lucia',
+      payload: JSON.stringify({
         fromAccountId: 'acc-lucia',
         toAccountId: 'acc-bruno',
         amountCents: 8500,
         concept: 'Team dinner',
       }),
-      'failed',
-      'ref-historic-lucia',
-      null,
-      'No response received from the bank.',
-      '2026-09-23T16:41:12.000Z',
-    );
-    db.prepare('INSERT INTO meta VALUES(?,?)').run('seed', 'banana-v3-2026-09-25');
+      status: 'failed',
+      bankReference: 'ref-historic-lucia',
+      operationId: null,
+      error: 'No response received from the bank.',
+      createdAt: '2026-09-23T16:41:12.000Z',
+    });
+    db.prepare('INSERT INTO meta(key,value) VALUES(?,?)').run('seed', 'banana-v3-2026-09-25');
   })();
   const index = path.resolve('fixtures/embeddings/index.json.gz');
   if (existsSync(index)) {

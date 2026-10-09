@@ -12,7 +12,9 @@ export function replaceChunks(chunks: Chunk[], settings: { model: string; dimens
   const db = appDb();
   db.transaction(() => {
     db.exec('DELETE FROM chunks');
-    const insert = db.prepare('INSERT INTO chunks VALUES(?,?,?,?,?,?,?,?,?)');
+    const insert = db.prepare(
+      'INSERT INTO chunks(id,document_id,text,title,version,valid_from,valid_to,audience,vector) VALUES(?,?,?,?,?,?,?,?,?)',
+    );
     for (const c of chunks) {
       if (c.vector?.length !== settings.dimensions) throw new Error('Incomplete index.');
       insert.run(
@@ -27,8 +29,11 @@ export function replaceChunks(chunks: Chunk[], settings: { model: string; dimens
         vectorBuffer(c.vector),
       );
     }
-    db.prepare('INSERT OR REPLACE INTO meta VALUES(?,?)').run('index-model', settings.model);
-    db.prepare('INSERT OR REPLACE INTO meta VALUES(?,?)').run(
+    db.prepare('INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)').run(
+      'index-model',
+      settings.model,
+    );
+    db.prepare('INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)').run(
       'index-dimensions',
       String(settings.dimensions),
     );
@@ -46,6 +51,16 @@ export function allChunks(): Chunk[] {
     audience: r.audience,
     vector: readVector(r.vector),
   }));
+}
+/** The embedding model of the stored index, or undefined when no index was built. */
+export function indexModel() {
+  const row = appDb().prepare('SELECT value FROM meta WHERE key=?').get('index-model') as
+    { value: string } | undefined;
+  return row?.value;
+}
+/** How many chunks the index holds, as `{ chunks }`. */
+export function chunkCount() {
+  return appDb().prepare('SELECT COUNT(*) AS chunks FROM chunks').get() as { chunks: number };
 }
 export function exportIndex(): IndexDump {
   const db = appDb();
@@ -77,7 +92,7 @@ export function restoreIndex(index: IndexDump) {
   const db = appDb();
   db.transaction(() => {
     for (const c of chunks)
-      db.prepare('INSERT OR REPLACE INTO embedding_cache VALUES(?,?)').run(
+      db.prepare('INSERT OR REPLACE INTO embedding_cache(key,vector) VALUES(?,?)').run(
         embeddingKey(c.text),
         vectorBuffer(c.vector),
       );

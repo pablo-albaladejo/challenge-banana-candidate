@@ -48,7 +48,7 @@ describe('appDb', () => {
   });
   it('should keep existing data when the schema is created again after reopening', () => {
     // Arrange
-    appDb().prepare('INSERT INTO meta VALUES(?,?)').run('db-test', 'kept');
+    appDb().prepare('INSERT INTO meta(key,value) VALUES(?,?)').run('db-test', 'kept');
     const before = tables();
     closeAppDb();
     // Act

@@ -1,15 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { bankRequest, BankError } from './client';
-import { appDb } from '../db';
+import { intentById, updateIntent } from '../persistence/intents';
 import type { Operation, ToolContext, TransferInput } from '../types';
 /** One bank reference per intent: retries replay the original operation instead of adding one. */
 function intentReference(intentId: string) {
-  const db = appDb();
-  const row = db.prepare('SELECT bank_reference FROM intents WHERE id=?').get(intentId) as
-    { bank_reference: string | null } | undefined;
+  const row = intentById(intentId);
   if (row?.bank_reference) return row.bank_reference;
   const reference = randomUUID();
-  db.prepare('UPDATE intents SET bank_reference=? WHERE id=?').run(reference, intentId);
+  updateIntent(intentId, { bank_reference: reference });
   return reference;
 }
 export async function dispatchTransfer(ctx: ToolContext, input: TransferInput): Promise<Operation> {

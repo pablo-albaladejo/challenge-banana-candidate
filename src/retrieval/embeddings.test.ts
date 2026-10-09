@@ -112,7 +112,7 @@ describe('embedTexts', () => {
     // Arrange
     const vector = fakeEmbedding('cached', dimensions);
     appDb()
-      .prepare('INSERT INTO embedding_cache VALUES(?,?)')
+      .prepare('INSERT INTO embedding_cache(key,vector) VALUES(?,?)')
       .run(embeddingKey('cached text'), vectorBuffer(vector));
     // Act
     const [result] = await embedTexts(['cached text']);
@@ -147,7 +147,7 @@ describe('embedTexts', () => {
     // Arrange
     const cached = fakeEmbedding('seeded', dimensions);
     appDb()
-      .prepare('INSERT INTO embedding_cache VALUES(?,?)')
+      .prepare('INSERT INTO embedding_cache(key,vector) VALUES(?,?)')
       .run(embeddingKey('second'), vectorBuffer(cached));
     fake.embed('first', fakeEmbedding('one', dimensions));
     fake.embed('third', fakeEmbedding('three', dimensions));

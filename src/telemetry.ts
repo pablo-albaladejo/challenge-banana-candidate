@@ -1,16 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import { appDb } from './db';
+import { insertEvent } from './persistence/events';
 import type { ToolContext } from './types';
 export function recordEvent(ctx: ToolContext, kind: string, data: Record<string, unknown>) {
-  appDb()
-    .prepare('INSERT INTO events VALUES(?,?,?,?,?,?,?)')
-    .run(
-      randomUUID(),
-      ctx.runId,
-      ctx.userId,
-      ctx.conversationId,
-      kind,
-      JSON.stringify(data),
-      new Date().toISOString(),
-    );
+  insertEvent({
+    id: randomUUID(),
+    runId: ctx.runId,
+    userId: ctx.userId,
+    conversationId: ctx.conversationId,
+    kind,
+    data: JSON.stringify(data),
+    createdAt: new Date().toISOString(),
+  });
 }

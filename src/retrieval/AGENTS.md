@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-10-09 | Updated: 2026-10-09 -->
+<!-- Generated: 2026-10-09 | Updated: 2026-10-10 -->
 
 # retrieval
 
@@ -9,11 +9,11 @@ Embeddings, the SQLite-backed vector store, and semantic search over document ch
 
 ## Key Files
 
-| File            | Description                                                                                                                                                                                                                                                                                   |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `embeddings.ts` | `dimensions = 1536`; `openai()` (throws `MissingOpenAIKeyError` if `OPENAI_API_KEY` blank; `maxRetries:2`, 45 s timeout); `embedTexts(texts)` with `embedding_cache` lookup and batches of 48; `vectorBuffer`/`readVector` (Float32 BLOB); `embeddingKey` = sha256(model:dims:`text-v1`:text) |
-| `store.ts`      | `replaceChunks` (transactional full replace; sets `meta.index-model`, `meta.index-dimensions`), `allChunks()`, `exportIndex()`/`restoreIndex()` (gz JSON dump, `format:1`, model must equal `OPENAI_EMBEDDING_MODEL`; also refills `embedding_cache`)                                         |
-| `search.ts`     | `searchDocuments(query, role='customer', limit=5)`: requires `meta.index-model` matching config, embeds the query, loads **all** chunks, filters `audience==='public'` unless `role==='operator'`, scores by dot product, returns top `limit` as `SearchResult`                               |
+| File            | Description                                                                                                                                                                                                                                                                                                                                    |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `embeddings.ts` | `dimensions = 1536`; `openai()` (throws `MissingOpenAIKeyError` if `OPENAI_API_KEY` blank; `maxRetries:2`, 45 s timeout); `embedTexts(texts)` with `embedding_cache` lookup and batches of 48; `vectorBuffer`/`readVector` (Float32 BLOB); `embeddingKey` = sha256(model:dims:`text-v1`:text)                                                  |
+| `store.ts`      | `replaceChunks` (transactional full replace; sets `meta.index-model`, `meta.index-dimensions`), `allChunks()`, `indexModel()` (model of the stored index, or undefined), `chunkCount()` (`{ chunks }`), `exportIndex()`/`restoreIndex()` (gz JSON dump, `format:1`, model must equal `OPENAI_EMBEDDING_MODEL`; also refills `embedding_cache`) |
+| `search.ts`     | `searchDocuments(query, role='customer', limit=5)`: requires `indexModel()` matching config, embeds the query, loads **all** chunks, filters `audience==='public'` unless `role==='operator'`, scores by dot product, returns top `limit` as `SearchResult`                                                                                    |
 
 ## For AI Agents
 
@@ -34,7 +34,7 @@ Embeddings, the SQLite-backed vector store, and semantic search over document ch
 
 ### Common Patterns
 
-- Float32 BLOB round-trip via `vectorBuffer`/`readVector`; `INSERT OR REPLACE` for cache and meta.
+- Float32 BLOB round-trip via `vectorBuffer`/`readVector`; named-column `INSERT OR REPLACE` for cache and meta. `store.ts` and `embeddings.ts` are the only owners of `chunks`, `meta` (index keys) and `embedding_cache` SQL; `search.ts` and the API route go through them.
 - Throw plain `Error` for index/model mismatch; the route maps messages to responses.
 
 ## Dependencies

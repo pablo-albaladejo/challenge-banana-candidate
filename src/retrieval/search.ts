@@ -1,17 +1,16 @@
-import { appDb } from '../db';
 import { config, referenceDate } from '../config';
 import { embedTexts } from './embeddings';
-import { allChunks } from './store';
+import { allChunks, indexModel } from './store';
 import type { SearchResult } from '../types';
 export async function searchDocuments(
   query: string,
   role = 'customer',
   limit = 5,
 ): Promise<SearchResult[]> {
-  const meta = appDb().prepare('SELECT value FROM meta WHERE key=?').get('index-model') as
-    { value: string } | undefined;
-  if (!meta) throw new Error('No document index. Run npm run setup or npm run ingest.');
-  if (meta.value !== config.embeddingModel)
+  const model = indexModel();
+  if (model === undefined)
+    throw new Error('No document index. Run npm run setup or npm run ingest.');
+  if (model !== config.embeddingModel)
     throw new Error('The model does not match the index. Re-ingest the documents.');
   const [queryVector] = await embedTexts([query]);
   return (

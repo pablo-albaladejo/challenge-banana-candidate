@@ -154,11 +154,11 @@ in parallel without colliding.
 Test data comes from three places, each with one job. Do not write per-file builders
 (`context()`, `input`, `chunk()`, `fixture()`, `intentRow()`…): use these.
 
-| Where                         | What                                                                                                                                                                                                                          | Use for                                                     |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `tests/fixtures/world.ts`     | Typed constants of the seeded world: `customers`, `operators`, `accounts`, `conversations`, `cases`, `historicTransfer`, `unknown` ids, `counts`, `money` limits                                                              | Every id the bank or the app seed knows                     |
-| `tests/fixtures/factories.ts` | Rosie + Faker: `toolContextFactory`, `transferInputFactory` (valid: lucia `acc-lucia` → `acc-bruno`), `intentFactory` + `persistIntent()`, `searchResultFactory`, `chunkFactory`, `documentRecordFactory`, `eventDataFactory` | Objects a test builds; override only what the case is about |
-| `tests/support/db.ts`         | Readers of the app database: `intentRow`, `approvalsFor`, `runOf`, `latestRun`, `messagesOf`, `events`, `eventsFor`                                                                                                           | Asserting what the application stored                       |
+| Where                         | What                                                                                                                                                                                                                                                                                                                                                     | Use for                                                     |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `tests/fixtures/world.ts`     | Typed constants of the seeded world: `customers`, `operators`, `accounts`, `conversations`, `cases`, `historicTransfer`, `unknown` ids, `counts`, `money` limits                                                                                                                                                                                         | Every id the bank or the app seed knows                     |
+| `tests/fixtures/factories.ts` | Rosie + Faker: `toolContextFactory`, `transferInputFactory` (valid: lucia `acc-lucia` → `acc-bruno`), `intentFactory` + `persistIntent()`, `searchResultFactory`, `chunkFactory`, `documentRecordFactory`, `eventDataFactory`, repo inputs (`conversationFactory`, `messageFactory`, `runFactory`, `approvalFactory`, `incidentFactory`, `eventFactory`) | Objects a test builds; override only what the case is about |
+| `tests/support/db.ts`         | Readers of the app database: `intentRow`, `approvalsFor`, `runOf`, `latestRun`, `messagesOf`, `events`, `eventsFor`                                                                                                                                                                                                                                      | Asserting what the application stored                       |
 
 ```ts
 it('should move the amount between both accounts exactly once', async () => {
@@ -230,10 +230,14 @@ that can break a valid case): fix the factory, not the test.
 | Integration | `src/ingestion/*`              | `chunker` (8), `pipeline` (11)                        | `openai.ts`                   |
 | Integration | `src/operator/view.ts`         | `view.test.ts` (5)                                    | `seedApp`                     |
 | Integration | `src/{db,telemetry,people}.ts` | sibling tests (11)                                    | real SQLite                   |
+| Integration | `src/migrations.ts`            | `migrations.test.ts` (5)                              | real SQLite files             |
+| Integration | `src/persistence/*`            | one sibling test per repo (25)                        | real SQLite, `db.ts` readers  |
+| Unit        | `src/config.ts`                | `config.test.ts` (10): `loadConfig`, secrets check    | —                             |
+| Contract    | frozen import paths (plan §2)  | `src/public-surface.test.ts` (15)                     | —                             |
 | Integration | `src/{auth,seed}.ts`           | sibling tests                                         | —                             |
 | Contract    | `simulator/{bank,seed}.ts`     | sibling tests                                         | —                             |
 
-Not tested on purpose: `src/types.ts`, `src/config.ts` (read at import), `scripts/*` (CLI
+Not tested on purpose: `src/types.ts` (types only; its import is checked by `public-surface.test.ts`), `scripts/*` (CLI
 wrappers, exercised by the E2E stack boot), `app/layout.tsx` (covered by E2E), `simulator/server.ts`
 (external bank; replaced at evaluation).
 

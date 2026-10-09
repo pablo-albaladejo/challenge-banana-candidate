@@ -52,7 +52,7 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
       if (!target || item.embedding.length !== dimensions)
         throw new Error('Unexpected dimensions returned by the embeddings API.');
       result[target.index] = item.embedding;
-      db.prepare('INSERT OR REPLACE INTO embedding_cache VALUES(?,?)').run(
+      db.prepare('INSERT OR REPLACE INTO embedding_cache(key,vector) VALUES(?,?)').run(
         target.key,
         vectorBuffer(item.embedding),
       );

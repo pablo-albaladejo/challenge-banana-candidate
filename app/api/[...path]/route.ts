@@ -2,7 +2,16 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { actor, sessionToken, sameOrigin, HttpError } from '../../../src/auth';
 import { people, person } from '../../../src/people';
-import { appDb } from '../../../src/db';
+import {
+  conversationOf,
+  conversationsOf,
+  insertConversation,
+  renameConversation,
+} from '../../../src/persistence/conversations';
+import { messagesIn } from '../../../src/persistence/messages';
+import { approvalOf, liveApprovalsOf } from '../../../src/persistence/approvals';
+import { intentOf } from '../../../src/persistence/intents';
+import { allIncidents } from '../../../src/persistence/incidents';
 import { bankRequest, BankError } from '../../../src/banking/client';
 import { transferMoney } from '../../../src/banking/actions';
 import { sendMessage, answerWithEvidence } from '../../../src/agent/run';
@@ -12,16 +21,14 @@ import { documents, readDocument, ingest } from '../../../src/ingestion/pipeline
 import { searchDocuments } from '../../../src/retrieval/search';
 import { MissingOpenAIKeyError } from '../../../src/retrieval/embeddings';
 import { config } from '../../../src/config';
-import { allChunks } from '../../../src/retrieval/store';
+import { allChunks, chunkCount } from '../../../src/retrieval/store';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 const json = (data: unknown, status = 200, headers: Record<string, string> = {}) =>
   Response.json(data, { status, headers: { 'Cache-Control': 'no-store', ...headers } });
 type RouteContext = { params: Promise<{ path: string[] }> };
 function conversationFor(id: string, userId: string) {
-  const result = appDb()
-    .prepare('SELECT * FROM conversations WHERE id=? AND user_id=?')
-    .get(id, userId);
+  const result = conversationOf(id, userId);
   if (!result) throw new HttpError(404, 'Conversation not found.');
   return result;
 }
@@ -46,26 +53,19 @@ async function handler(request: Request, context: RouteContext) {
         'Set-Cookie': `banana_actor=${sessionToken(userId)}; Path=/; HttpOnly; SameSite=Strict`,
       });
     }
-    const current = actor(request),
-      db = appDb();
+    const current = actor(request);
     if (route === 'session') return json({ person: current });
     if (route === 'dashboard') {
-      if (current.role === 'operator')
-        return json({
-          incidents: db.prepare('SELECT * FROM incidents ORDER BY created_at DESC').all(),
-        });
+      if (current.role === 'operator') return json({ incidents: allIncidents() });
       const [accounts, movements, contacts] = await Promise.all([
         bankRequest(current.id, '/v1/accounts'),
         bankRequest(current.id, '/v1/movements'),
         bankRequest(current.id, '/v1/contacts'),
       ]);
-      const approvals = (
-        db
-          .prepare(
-            'SELECT * FROM approvals WHERE user_id=? AND consumed_at IS NULL AND expires_at>?',
-          )
-          .all(current.id, new Date().toISOString()) as any[]
-      ).map((a) => ({ ...a, payload: JSON.parse(a.payload) }));
+      const approvals = liveApprovalsOf(current.id, new Date().toISOString()).map((a) => ({
+        ...a,
+        payload: JSON.parse(a.payload),
+      }));
       return json({ accounts, movements, contacts, approvals });
     }
     if (route === 'conversations') {
@@ -73,19 +73,15 @@ async function handler(request: Request, context: RouteContext) {
         throw new HttpError(403, 'Select a customer to open a chat.');
       if (request.method === 'POST') {
         const id = randomUUID();
-        db.prepare('INSERT INTO conversations VALUES(?,?,?,?)').run(
+        insertConversation({
           id,
-          current.id,
-          'New conversation',
-          new Date().toISOString(),
-        );
+          userId: current.id,
+          title: 'New conversation',
+          createdAt: new Date().toISOString(),
+        });
         return json({ id }, 201);
       }
-      return json(
-        db
-          .prepare('SELECT * FROM conversations WHERE user_id=? ORDER BY created_at DESC')
-          .all(current.id),
-      );
+      return json(conversationsOf(current.id));
     }
     if (path[0] === 'conversations' && path[1]) {
       const conversation = conversationFor(path[1], current.id);
@@ -93,18 +89,13 @@ async function handler(request: Request, context: RouteContext) {
         const { content } = z
           .object({ content: z.string().trim().min(1).max(8000) })
           .parse(await request.json());
-        if ((conversation as any).title === 'New conversation')
-          db.prepare('UPDATE conversations SET title=? WHERE id=?').run(
-            content.slice(0, 50),
-            path[1],
-          );
+        if (conversation.title === 'New conversation')
+          renameConversation(path[1], content.slice(0, 50));
         return json(await sendMessage(current.id, path[1], content));
       }
       return json({
         conversation,
-        messages: db
-          .prepare('SELECT * FROM messages WHERE conversation_id=? ORDER BY created_at,rowid')
-          .all(path[1]),
+        messages: messagesIn(path[1]),
       });
     }
     if (route === 'actions' && request.method === 'POST') {
@@ -133,13 +124,9 @@ async function handler(request: Request, context: RouteContext) {
       return json(await runTool(body.name, body.arguments, ctx));
     }
     if (path[0] === 'approvals' && path[1] && path[2] === 'confirm' && request.method === 'POST') {
-      const approval = db
-        .prepare('SELECT * FROM approvals WHERE id=? AND user_id=?')
-        .get(path[1], current.id) as any;
+      const approval = approvalOf(path[1], current.id);
       if (!approval) throw new HttpError(404, 'Proposal not found.');
-      const intent = db
-        .prepare('SELECT * FROM intents WHERE id=? AND user_id=?')
-        .get(approval.intent_id, current.id) as any;
+      const intent = intentOf(approval.intent_id, current.id);
       if (!intent) throw new HttpError(404, 'Intent not found.');
       return json(
         await transferMoney(
@@ -156,8 +143,7 @@ async function handler(request: Request, context: RouteContext) {
     }
     if (path[0] === 'incidents') {
       if (current.role !== 'operator') throw new HttpError(403, 'Operator role required.');
-      if (!path[1])
-        return json(db.prepare('SELECT * FROM incidents ORDER BY created_at DESC').all());
+      if (!path[1]) return json(allIncidents());
       return json(await caseDetail(current.id, path[1]));
     }
     if (path[0] === 'documents') {
@@ -177,7 +163,7 @@ async function handler(request: Request, context: RouteContext) {
       }
       return json({
         documents: visible,
-        index: db.prepare('SELECT COUNT(*) AS chunks FROM chunks').get(),
+        index: chunkCount(),
       });
     }
     if (route === 'preview-answer' && request.method === 'POST') {

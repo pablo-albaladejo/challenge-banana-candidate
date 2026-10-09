@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-10-09 | Updated: 2026-10-09 -->
+<!-- Generated: 2026-10-09 | Updated: 2026-10-10 -->
 
 # banking
 
@@ -20,6 +20,7 @@ Server-side integration with the external bank simulator (HTTP, signed requests)
 
 ### Working In This Directory
 
+- Intent and approval rows are read and written only through `src/persistence/intents.ts` and `src/persistence/approvals.ts`; no SQL in this directory.
 - Money state is owned by the bank (`simulator/`), not the app DB. `intents` in the app DB is only the app's record of attempts (`created|processing|completed|failed`).
 - Bank contract (idempotency by actor + reference, error codes) is in `docs/contracts.md`; do not change `simulator/` to make this code pass.
 - Things worth scrutinizing:

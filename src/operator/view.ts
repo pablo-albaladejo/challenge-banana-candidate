@@ -1,19 +1,11 @@
-import { appDb } from '../db';
+import { incidentById } from '../persistence/incidents';
+import { messagesIn } from '../persistence/messages';
+import { eventsIn } from '../persistence/events';
+import { intentsIn, unsettledIntentIds } from '../persistence/intents';
 import { person } from '../people';
 import { HttpError } from '../auth';
 import { bankRequest } from '../banking/client';
 import { reconcileIntent } from '../banking/reconcile';
-type Incident = {
-  id: string;
-  user_id: string;
-  conversation_id: string;
-  summary: string;
-  status: string;
-  created_at: string;
-};
-type Message = { id: string; role: string; content: string; created_at: string };
-type EventRow = { id: string; kind: string; data: string; created_at: string };
-type IntentRow = { id: string; status: string; payload: string; bank_reference: string | null };
 type BankOperation = { id: string; reference: string; status: string; amountCents: number };
 /**
  * Everything an operator needs to understand a case: the conversation, what the agent did, the
@@ -22,26 +14,19 @@ type BankOperation = { id: string; reference: string; status: string; amountCent
  */
 export async function caseDetail(operatorId: string, id: string) {
   if (person(operatorId)?.role !== 'operator') throw new HttpError(403, 'Operator role required.');
-  const db = appDb();
-  const incident = db.prepare('SELECT * FROM incidents WHERE id=?').get(id) as Incident | undefined;
+  const incident = incidentById(id);
   if (!incident) throw new HttpError(404, 'Case not found.');
-  const history = db
-    .prepare('SELECT * FROM messages WHERE conversation_id=? ORDER BY created_at,rowid')
-    .all(incident.conversation_id) as Message[];
-  const events = (
-    db
-      .prepare('SELECT * FROM events WHERE conversation_id=? ORDER BY created_at,rowid')
-      .all(incident.conversation_id) as EventRow[]
-  ).map((e) => ({ ...e, data: JSON.parse(e.data) }));
-  const pending = db
-    .prepare("SELECT id FROM intents WHERE conversation_id=? AND status IN ('unknown','failed')")
-    .all(incident.conversation_id) as { id: string }[];
+  const history = messagesIn(incident.conversation_id);
+  const events = eventsIn(incident.conversation_id).map((e) => ({
+    ...e,
+    data: JSON.parse(e.data),
+  }));
+  const pending = unsettledIntentIds(incident.conversation_id);
   for (const { id: intentId } of pending) await reconcileIntent(incident.user_id, intentId);
-  const intents = (
-    db
-      .prepare('SELECT * FROM intents WHERE conversation_id=? ORDER BY created_at')
-      .all(incident.conversation_id) as IntentRow[]
-  ).map((i) => ({ ...i, payload: JSON.parse(i.payload) }));
+  const intents = intentsIn(incident.conversation_id).map((i) => ({
+    ...i,
+    payload: JSON.parse(i.payload),
+  }));
   const gaps: string[] = [];
   if (!events.length) gaps.push('No agent activity was recorded for this conversation.');
   let bank: { operations: BankOperation[] } | null = null;

@@ -12,7 +12,13 @@ import type {
   ToolContext,
   TransferInput,
 } from '../../src/types';
-import { accounts, customers, money } from './world';
+import type { NewConversation } from '../../src/persistence/conversations';
+import type { NewMessage } from '../../src/persistence/messages';
+import type { NewRun } from '../../src/persistence/runs';
+import type { NewApproval } from '../../src/persistence/approvals';
+import type { NewIncident } from '../../src/persistence/incidents';
+import type { NewEvent } from '../../src/persistence/events';
+import { accounts, conversations, customers, money } from './world';
 
 const isoDate = () =>
   faker.date.between({ from: '2025-01-01', to: '2026-06-30' }).toISOString().slice(0, 10);
@@ -75,7 +81,9 @@ export const intentFactory = new Factory<Intent>()
 export function persistIntent(attributes: Partial<Intent> = {}): Intent {
   const intent = intentFactory.build(attributes);
   appDb()
-    .prepare('INSERT INTO intents VALUES(?,?,?,?,?,?,?,?,?,?)')
+    .prepare(
+      'INSERT INTO intents(id,user_id,conversation_id,run_id,payload,status,bank_reference,operation_id,error,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',
+    )
     .run(
       intent.id,
       intent.userId,
@@ -143,3 +151,58 @@ export const eventDataFactory = new Factory<EventData>()
     ]),
   )
   .attr('status', () => faker.helpers.arrayElement(['started', 'completed', 'failed']));
+
+// Rows the app repositories store (src/persistence/*), in camelCase. Ids of app-only records are
+// generated; people and seeded conversations come from world.ts.
+
+/** A new conversation of lucia's, outside the seed. */
+export const conversationFactory = new Factory<NewConversation>()
+  .attr('id', () => `conv-${faker.string.uuid()}`)
+  .attr('userId', customers.lucia)
+  .attr('title', () => faker.lorem.words(3))
+  .attr('createdAt', () => new Date().toISOString());
+
+/** A customer message in a conversation. Override `conversationId` with a stored conversation. */
+export const messageFactory = new Factory<NewMessage>()
+  .attr('id', () => `message-${faker.string.uuid()}`)
+  .attr('conversationId', conversations.luciaWelcome)
+  .attr('role', 'user')
+  .attr('content', () => faker.lorem.sentence())
+  .attr('createdAt', () => new Date().toISOString())
+  .attr('runId', () => `run-${faker.string.uuid()}`);
+
+/** An agent run that just started in lucia's welcome conversation. */
+export const runFactory = new Factory<NewRun>()
+  .attr('id', () => `run-${faker.string.uuid()}`)
+  .attr('userId', customers.lucia)
+  .attr('conversationId', conversations.luciaWelcome)
+  .attr('startedAt', () => new Date().toISOString())
+  .attr('status', 'running')
+  .attr('error', null);
+
+/** A live transfer proposal of lucia's, expiring in a minute. */
+export const approvalFactory = new Factory<NewApproval>()
+  .attr('id', () => `approval-${faker.string.uuid()}`)
+  .attr('userId', customers.lucia)
+  .attr('intentId', () => `intent-${faker.string.uuid()}`)
+  .attr('payload', () => JSON.stringify(transferInputFactory.build()))
+  .attr('expiresAt', () => new Date(Date.now() + 60_000).toISOString());
+
+/** An open support case of lucia's in a conversation outside the seed. */
+export const incidentFactory = new Factory<NewIncident>()
+  .attr('id', () => `case-${faker.string.uuid()}`)
+  .attr('userId', customers.lucia)
+  .attr('conversationId', () => `conv-${faker.string.uuid()}`)
+  .attr('summary', () => faker.lorem.sentence())
+  .attr('status', 'open')
+  .attr('createdAt', () => new Date().toISOString());
+
+/** A stored telemetry event about one tool call in lucia's welcome conversation. */
+export const eventFactory = new Factory<NewEvent>()
+  .attr('id', () => `event-${faker.string.uuid()}`)
+  .attr('runId', () => `run-${faker.string.uuid()}`)
+  .attr('userId', customers.lucia)
+  .attr('conversationId', conversations.luciaWelcome)
+  .attr('kind', 'tool.completed')
+  .attr('data', () => JSON.stringify(eventDataFactory.build()))
+  .attr('createdAt', () => new Date().toISOString());
