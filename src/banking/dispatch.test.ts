@@ -85,6 +85,31 @@ describe('dispatchTransfer', () => {
     assert.equal((await operationsFor('lucia')).length, operationsBefore + 1);
     assert.equal(bankReference(ctx.intentId), operation.reference);
   });
+  for (const profile of ['lost-response', 'slow-response', 'read-unavailable'] as const) {
+    it(`should commit a single operation when the bank commits but the response is lost (${profile})`, async () => {
+      // Arrange
+      await resetBank(profile);
+      const ctx = processingIntent();
+      const operationsBefore = (await operationsFor('lucia')).length;
+      // Act
+      const operation = await dispatchTransfer(ctx, input);
+      // Assert
+      assert.equal(operation.status, 'completed');
+      assert.equal((await operationsFor('lucia')).length, operationsBefore + 1);
+      assert.equal(bankReference(ctx.intentId), operation.reference);
+    });
+  }
+  it('should reuse the intent reference when the same intent is dispatched again', async () => {
+    // Arrange
+    const ctx = processingIntent();
+    const first = await dispatchTransfer(ctx, input);
+    const operationsBefore = (await operationsFor('lucia')).length;
+    // Act
+    const second = await dispatchTransfer(ctx, input);
+    // Assert
+    assert.equal(second.id, first.id);
+    assert.equal((await operationsFor('lucia')).length, operationsBefore);
+  });
   it('should surface a client error from the bank without retrying it', async () => {
     // Arrange
     const ctx = processingIntent();
