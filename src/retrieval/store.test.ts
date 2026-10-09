@@ -13,13 +13,15 @@ describe('replaceChunks', () => {
   beforeEach(() => seedApp());
   it('should replace the whole index and record its model and dimensions', () => {
     // Arrange
-    const chunks = chunkFactory.buildList(2, {}, { dimensions: 3 });
+    const [first, second] = chunkFactory
+      .buildList(2, {}, { dimensions: 3 })
+      .sort((a, b) => a.id.localeCompare(b.id));
     // Act
-    replaceChunks(chunks, { model: 'test-model', dimensions: 3 });
+    replaceChunks([second, first], { model: 'test-model', dimensions: 3 });
     // Assert
     assert.deepEqual(
       allChunks().map((c) => c.id),
-      chunks.map((c) => c.id).sort(),
+      [first.id, second.id],
     );
     assert.equal(meta('index-model'), 'test-model');
     assert.equal(meta('index-dimensions'), '3');

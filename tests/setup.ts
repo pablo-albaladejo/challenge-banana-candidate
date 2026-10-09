@@ -26,10 +26,10 @@ delete process.env.OPENAI_BASE_URL;
 process.on('exit', () => fs.rmSync(temp, { recursive: true, force: true }));
 // One Faker seed per run: `npm test` sets TEST_SEED in tests/global-setup.ts and every file inherits
 // it. A single file run without TEST_SEED gets its own seed, printed so a failure can be replayed.
-if (!process.env.TEST_SEED) {
+if (!/^\d+$/.test(process.env.TEST_SEED ?? '')) {
   process.env.TEST_SEED = String(Math.floor(Math.random() * 2 ** 31));
   console.log(
-    `Test seed ${process.env.TEST_SEED} · reproduce with TEST_SEED=${process.env.TEST_SEED}`,
+    `Test seed ${process.env.TEST_SEED} · reproduce with TEST_SEED=${process.env.TEST_SEED} and the same command`,
   );
 }
 faker.seed(Number(process.env.TEST_SEED));

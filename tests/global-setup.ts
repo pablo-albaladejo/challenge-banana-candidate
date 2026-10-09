@@ -8,7 +8,9 @@ const banner = () =>
   );
 
 export function globalSetup() {
-  process.env.TEST_SEED ??= String(Math.floor(Math.random() * 2 ** 31));
+  // An empty or non-numeric TEST_SEED would let every file pick its own seed: replace it.
+  if (!/^\d+$/.test(process.env.TEST_SEED ?? ''))
+    process.env.TEST_SEED = String(Math.floor(Math.random() * 2 ** 31));
   banner();
 }
 

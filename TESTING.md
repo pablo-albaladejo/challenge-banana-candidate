@@ -182,6 +182,9 @@ it('should move the amount between both accounts exactly once', async () => {
 - **Assert against the built object, never a literal Faker could change**:
   `assert.equal(op.amountCents, input.amountCents)`, not `assert.equal(op.amountCents, 1234)`.
 - Build in `// Arrange`, one object per case. Shared module-level fixtures hide what a case uses.
+- A thin local wrapper is fine when a whole file repeats the same override (for example a
+  `toolContextFactory.build({ conversationId })` used by every case): it only combines shared
+  factories and world ids, and never builds data of its own.
 
 ### Random seed
 

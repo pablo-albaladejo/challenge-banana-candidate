@@ -18,6 +18,7 @@ describe('reconcileIntent', () => {
     const { id } = persistIntent({
       status: 'unknown',
       bankReference: historicTransfer.reference,
+      payload: historicTransfer.payload,
       error: lostResponse,
     });
     // Act
@@ -37,6 +38,7 @@ describe('reconcileIntent', () => {
     const { id } = persistIntent({
       status: 'failed',
       bankReference: historicTransfer.reference,
+      payload: historicTransfer.payload,
       error: lostResponse,
     });
     // Act

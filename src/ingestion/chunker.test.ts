@@ -60,7 +60,7 @@ describe('chunkDocument', () => {
   it('should derive different ids for different documents with the same text', () => {
     // Arrange
     const doc = documentRecordFactory.build();
-    const other = documentRecordFactory.build();
+    const other = { ...doc, id: documentRecordFactory.build().id };
     // Act
     const [a] = chunkDocument(doc, 'same text');
     const [b] = chunkDocument(other, 'same text');

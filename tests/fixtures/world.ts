@@ -59,6 +59,13 @@ export const historicTransfer = {
   toAccountId: accounts.bruno,
   amountCents: 8500,
   concept: 'Team dinner',
+  /** The transfer input that produced the operation, as the intent stores it. */
+  payload: {
+    fromAccountId: accounts.lucia,
+    toAccountId: accounts.bruno,
+    amountCents: 8500,
+    concept: 'Team dinner',
+  },
 } as const;
 
 /** Ids that exist nowhere in the seed, for not-found and forbidden paths. */
