@@ -21,21 +21,47 @@ describe('authorizeTransfer', () => {
   before(startBank);
   after(stopBank);
   beforeEach(() => resetBank());
-  it('should allow a transfer from the actor main account', async () => {
+  it('should propose a transfer from the actor main account for review', async () => {
     // Arrange
     const ctx = context('lucia');
     // Act
     const result = await authorizeTransfer(ctx, transfer('acc-lucia'));
     // Assert
-    assert.equal(result, null);
+    assert.equal(result?.status, 'requires_confirmation');
+    assert.deepEqual((result?.approval as { payload: unknown }).payload, transfer('acc-lucia'));
   });
-  it('should allow a transfer from any other account the actor holds', async () => {
+  it('should propose a transfer from any other account the actor holds', async () => {
     // Arrange
     const ctx = context('lucia');
     // Act
     const result = await authorizeTransfer(ctx, transfer('acc-lucia-savings'));
     // Assert
+    assert.equal(result?.status, 'requires_confirmation');
+  });
+  it('should allow a transfer once its pending proposal is approved', async () => {
+    // Arrange
+    const ctx = context('lucia');
+    const proposal = await authorizeTransfer(ctx, transfer('acc-lucia'));
+    const approvalId = (proposal?.approval as { id: string }).id;
+    // Act
+    const result = await authorizeTransfer({ ...ctx, approvalId }, transfer('acc-lucia'));
+    // Assert
     assert.equal(result, null);
+  });
+  it('should reject an approval presented with different transfer details', async () => {
+    // Arrange
+    const ctx = context('lucia');
+    const proposal = await authorizeTransfer(ctx, transfer('acc-lucia'));
+    const approvalId = (proposal?.approval as { id: string }).id;
+    // Act & Assert
+    await assert.rejects(
+      authorizeTransfer({ ...ctx, approvalId }, { ...transfer('acc-lucia'), amountCents: 99999 }),
+      (e) => {
+        assert.ok(e instanceof HttpError);
+        assert.equal(e.status, 409);
+        return true;
+      },
+    );
   });
   it('should reject a source account held by another customer with a 403', async () => {
     // Arrange

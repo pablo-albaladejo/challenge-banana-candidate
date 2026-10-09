@@ -32,7 +32,9 @@ export const toolDefinitions: FunctionTool[] = [
   {
     type: 'function',
     name: 'transfer_money',
-    description: 'Send a transfer between simulator accounts. Amounts are integer cents.',
+    description:
+      'Propose a transfer for the customer to review. Amounts are integer cents. It moves no money: ' +
+      'the customer must confirm the proposal in the app, so never say the transfer is done.',
     parameters: object({
       fromAccountId: string,
       toAccountId: string,

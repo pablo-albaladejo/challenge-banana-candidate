@@ -21,7 +21,9 @@ describe('Customer overview', () => {
 });
 describe('Transfers', () => {
   beforeEach(() => resetBank());
-  it('should complete a manual transfer and book it once at the bank', async ({ page }) => {
+  it('should book a manual transfer once, only after the customer confirms it', async ({
+    page,
+  }) => {
     // Arrange
     const concept = `E2E dinner ${Date.now()}`;
     await openAs(page, 'Lucía Martín');
@@ -29,10 +31,13 @@ describe('Transfers', () => {
     await page.getByLabel('Recipient').selectOption({ value: 'acc-bruno' });
     await page.getByLabel('Amount in euros').fill('12.34');
     await page.getByPlaceholder('What is this transfer for?').fill(concept);
-    // Act
     await page.getByRole('button', { name: 'Send transfer' }).click();
+    await expect(page.getByRole('status')).toContainText('Review the proposal');
+    expect((await bankSnapshot()).operations.filter((o) => o.concept === concept)).toHaveLength(0);
+    // Act
+    await page.getByRole('button', { name: 'Confirm these details' }).click();
     // Assert
-    await expect(page.getByRole('status')).toContainText('Transfer completed');
+    await expect(page.getByRole('status')).toContainText('Transfer confirmed and completed');
     const booked = (await bankSnapshot()).operations.filter((o) => o.concept === concept);
     expect(booked).toHaveLength(1);
     expect(booked[0].amountCents).toBe(1234);

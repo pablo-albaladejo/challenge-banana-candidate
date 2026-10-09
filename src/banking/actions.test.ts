@@ -14,7 +14,7 @@ import {
   startBank,
   stopBank,
 } from '../../tests/support/bank';
-import type { ToolContext } from '../types';
+import type { ActionResult, ToolContext } from '../types';
 type IntentRow = {
   user_id: string;
   payload: string;
@@ -37,15 +37,51 @@ const input = {
   amountCents: 1250,
   concept: 'Shared lunch',
 };
+/** Proposes the transfer and confirms it, as the customer does through the approval card. */
+async function confirmed(ctx: ToolContext, args: unknown): Promise<ActionResult> {
+  const proposal = await transferMoney(ctx, args);
+  if (proposal.status !== 'requires_confirmation') return proposal;
+  ctx.approvalId = (proposal.approval as { id: string }).id;
+  return transferMoney(ctx, args);
+}
 describe('transferMoney', () => {
   before(startBank);
   after(stopBank);
   beforeEach(() => resetBank());
+  it('should propose the transfer for review without moving any money', async () => {
+    // Arrange
+    const ctx = context();
+    const before = await bankSnapshot();
+    // Act
+    const result = await transferMoney(ctx, input);
+    // Assert
+    assert.equal(result.status, 'requires_confirmation');
+    assert.deepEqual((result.approval as { payload: unknown }).payload, input);
+    assert.equal(intentRow(ctx.intentId)!.status, 'requires_confirmation');
+    assert.deepEqual(await bankSnapshot(), before);
+  });
+  it('should reject an approval that was already used with a 409 and keep the ledger', async () => {
+    // Arrange
+    const ctx = context();
+    const proposal = await transferMoney(ctx, input);
+    const approvalId = (proposal.approval as { id: string }).id;
+    appDb()
+      .prepare('UPDATE approvals SET consumed_at=? WHERE id=?')
+      .run(new Date().toISOString(), approvalId);
+    const before = await bankSnapshot();
+    // Act & Assert
+    await assert.rejects(transferMoney({ ...ctx, approvalId }, input), (e) => {
+      assert.ok(e instanceof HttpError);
+      assert.equal(e.status, 409);
+      return true;
+    });
+    assert.deepEqual(await bankSnapshot(), before);
+  });
   it('should complete the transfer and return the bank operation', async () => {
     // Arrange
     const ctx = context();
     // Act
-    const result = await transferMoney(ctx, input);
+    const result = await confirmed(ctx, input);
     // Assert
     assert.equal(result.status, 'completed');
     assert.equal(result.intentId, ctx.intentId);
@@ -60,7 +96,7 @@ describe('transferMoney', () => {
     const toBefore = await balanceOf('acc-bruno');
     const operationsBefore = (await operationsFor('lucia')).length;
     // Act
-    await transferMoney(ctx, input);
+    await confirmed(ctx, input);
     // Assert
     assert.equal(await balanceOf('acc-lucia'), fromBefore - input.amountCents);
     assert.equal(await balanceOf('acc-bruno'), toBefore + input.amountCents);
@@ -70,7 +106,7 @@ describe('transferMoney', () => {
     // Arrange
     const ctx = context();
     // Act
-    const result = await transferMoney(ctx, input);
+    const result = await confirmed(ctx, input);
     // Assert
     const row = intentRow(ctx.intentId)!;
     const operation = result.operation as { id: string; reference: string };
@@ -84,7 +120,7 @@ describe('transferMoney', () => {
     // Arrange
     const ctx = context();
     // Act
-    await transferMoney(ctx, input);
+    await confirmed(ctx, input);
     // Assert
     const events = appDb()
       .prepare('SELECT kind,user_id,data FROM events WHERE run_id=? ORDER BY rowid')
@@ -102,7 +138,7 @@ describe('transferMoney', () => {
     const ctx = context();
     const operationsBefore = (await operationsFor('lucia')).length;
     // Act
-    const result = await transferMoney(ctx, input);
+    const result = await confirmed(ctx, input);
     // Assert
     assert.equal(result.status, 'completed');
     assert.equal((await operationsFor('lucia')).length, operationsBefore + 1);
@@ -160,10 +196,10 @@ describe('transferMoney', () => {
   it('should return the original operation when a completed intent is retried', async () => {
     // Arrange
     const ctx = context();
-    const first = await transferMoney(ctx, input);
+    const first = await confirmed(ctx, input);
     const before = await bankSnapshot();
     // Act
-    const retry = await transferMoney(ctx, input);
+    const retry = await confirmed(ctx, input);
     // Assert
     assert.equal(retry.status, 'completed');
     assert.equal((retry.operation as { id: string }).id, (first.operation as { id: string }).id);
@@ -172,13 +208,13 @@ describe('transferMoney', () => {
   it('should keep a completed intent completed when it is retried while the bank is unreachable', async () => {
     // Arrange
     const ctx = context();
-    const first = await transferMoney(ctx, input);
+    const first = await confirmed(ctx, input);
     const original = config.bankUrl;
     config.bankUrl = 'http://127.0.0.1:9';
     // Act
     let retry;
     try {
-      retry = await transferMoney(ctx, input);
+      retry = await confirmed(ctx, input);
     } finally {
       config.bankUrl = original;
     }
@@ -190,7 +226,7 @@ describe('transferMoney', () => {
   it('should reject reusing an intent with a different payload as a 409 conflict', async () => {
     // Arrange
     const ctx = context();
-    await transferMoney(ctx, input);
+    await confirmed(ctx, input);
     const before = await bankSnapshot();
     // Act & Assert
     await assert.rejects(transferMoney(ctx, { ...input, amountCents: 9999 }), (e) => {
@@ -203,7 +239,7 @@ describe('transferMoney', () => {
   it('should reject an intent reused by another customer as a 409 conflict', async () => {
     // Arrange
     const ctx = context();
-    await transferMoney(ctx, input);
+    await confirmed(ctx, input);
     const before = await bankSnapshot();
     const intruder = { ...context('bruno'), intentId: ctx.intentId };
     // Act & Assert
@@ -223,7 +259,7 @@ describe('transferMoney', () => {
     const ctx = context();
     const before = await bankSnapshot();
     // Act
-    const result = await transferMoney(ctx, { ...input, amountCents: 10000000 });
+    const result = await confirmed(ctx, { ...input, amountCents: 10000000 });
     // Assert
     assert.equal(result.status, 'failed');
     // The message text belongs to the bank; only its presence is part of the contract.
@@ -234,7 +270,7 @@ describe('transferMoney', () => {
     // Arrange
     const ctx = context();
     // Act
-    await transferMoney(ctx, { ...input, amountCents: 10000000 });
+    await confirmed(ctx, { ...input, amountCents: 10000000 });
     // Assert
     const row = intentRow(ctx.intentId)!;
     assert.equal(row.status, 'failed');

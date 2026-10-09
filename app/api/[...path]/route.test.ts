@@ -2,11 +2,13 @@ import { after, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { POST } from './route';
 import { seedApp } from '../../../src/seed';
+import { appDb } from '../../../src/db';
 import { sessionToken } from '../../../src/auth';
 import { documents } from '../../../src/ingestion/pipeline';
 import { api } from '../../../tests/support/api';
 import {
   balanceOf,
+  bankSnapshot,
   operationsFor,
   resetBank,
   startBank,
@@ -447,7 +449,7 @@ describe('POST /api/actions', () => {
     assert.ok(result.body.contacts.every((c: any) => c.userId !== 'lucia'));
   });
 
-  it('should complete a transfer and move the amount at the bank exactly once', async () => {
+  it('should propose a transfer for review without moving any money', async () => {
     // Arrange
     const input = {
       fromAccountId: 'acc-lucia',
@@ -455,8 +457,7 @@ describe('POST /api/actions', () => {
       amountCents: 1234,
       concept: 'Lunch',
     };
-    const [fromBefore, toBefore] = [await balanceOf('acc-lucia'), await balanceOf('acc-bruno')];
-    const operationsBefore = (await operationsFor('lucia')).length;
+    const before = await bankSnapshot();
     // Act
     const result = await api('POST', 'actions', {
       as: 'lucia',
@@ -464,11 +465,35 @@ describe('POST /api/actions', () => {
     });
     // Assert
     assert.equal(result.status, 200);
-    assert.equal(result.body.status, 'completed');
-    assert.equal(result.body.operation.amountCents, 1234);
-    assert.equal(await balanceOf('acc-lucia'), fromBefore - 1234);
-    assert.equal(await balanceOf('acc-bruno'), toBefore + 1234);
-    assert.equal((await operationsFor('lucia')).length, operationsBefore + 1);
+    assert.equal(result.body.status, 'requires_confirmation');
+    assert.deepEqual(result.body.approval.payload, input);
+    assert.deepEqual(await bankSnapshot(), before);
+    const dashboard = await api('GET', 'dashboard', { as: 'lucia' });
+    assert.deepEqual(
+      dashboard.body.approvals.map((a: any) => a.id),
+      [result.body.approval.id],
+    );
+  });
+
+  it('should keep a single proposal when the same intent is proposed again', async () => {
+    // Arrange
+    const body = {
+      name: 'transfer_money',
+      arguments: {
+        fromAccountId: 'acc-lucia',
+        toAccountId: 'acc-bruno',
+        amountCents: 900,
+        concept: 'Tea',
+      },
+      intentId: 'intent-same-proposal',
+    };
+    const first = await api('POST', 'actions', { as: 'lucia', body });
+    // Act
+    const second = await api('POST', 'actions', { as: 'lucia', body });
+    // Assert
+    assert.equal(second.body.approval.id, first.body.approval.id);
+    const dashboard = await api('GET', 'dashboard', { as: 'lucia' });
+    assert.equal(dashboard.body.approvals.length, 1);
   });
 
   it('should fail a transfer from an account of another customer and keep the ledger', async () => {
@@ -540,7 +565,25 @@ describe('POST /api/actions', () => {
 });
 
 describe('POST /api/approvals/:id/confirm', () => {
-  beforeEach(() => seedApp());
+  before(startBank);
+  after(stopBank);
+  beforeEach(async () => {
+    seedApp();
+    await resetBank();
+  });
+  const input = {
+    fromAccountId: 'acc-lucia',
+    toAccountId: 'acc-bruno',
+    amountCents: 1234,
+    concept: 'Lunch',
+  };
+  const propose = async () =>
+    (
+      await api('POST', 'actions', {
+        as: 'lucia',
+        body: { name: 'transfer_money', arguments: input },
+      })
+    ).body.approval.id as string;
 
   it('should report an unknown proposal as not found', async () => {
     // Arrange
@@ -549,6 +592,70 @@ describe('POST /api/approvals/:id/confirm', () => {
     // Assert
     assert.equal(result.status, 404);
     assert.equal(result.body.error, 'Proposal not found.');
+  });
+
+  it('should execute a confirmed proposal and move the amount exactly once', async () => {
+    // Arrange
+    const approvalId = await propose();
+    const [fromBefore, toBefore] = [await balanceOf('acc-lucia'), await balanceOf('acc-bruno')];
+    const operationsBefore = (await operationsFor('lucia')).length;
+    // Act
+    const result = await api('POST', `approvals/${approvalId}/confirm`, { as: 'lucia' });
+    // Assert
+    assert.equal(result.status, 200);
+    assert.equal(result.body.status, 'completed');
+    assert.equal(result.body.operation.amountCents, 1234);
+    assert.equal(await balanceOf('acc-lucia'), fromBefore - 1234);
+    assert.equal(await balanceOf('acc-bruno'), toBefore + 1234);
+    assert.equal((await operationsFor('lucia')).length, operationsBefore + 1);
+  });
+
+  it('should remove a confirmed proposal from the pending approvals', async () => {
+    // Arrange
+    const approvalId = await propose();
+    // Act
+    await api('POST', `approvals/${approvalId}/confirm`, { as: 'lucia' });
+    // Assert
+    const dashboard = await api('GET', 'dashboard', { as: 'lucia' });
+    assert.deepEqual(dashboard.body.approvals, []);
+  });
+
+  it('should answer a repeated confirmation with the same operation', async () => {
+    // Arrange
+    const approvalId = await propose();
+    const first = await api('POST', `approvals/${approvalId}/confirm`, { as: 'lucia' });
+    const before = await bankSnapshot();
+    // Act
+    const second = await api('POST', `approvals/${approvalId}/confirm`, { as: 'lucia' });
+    // Assert
+    assert.equal(second.body.status, 'completed');
+    assert.equal(second.body.operation.id, first.body.operation.id);
+    assert.deepEqual(await bankSnapshot(), before);
+  });
+
+  it('should reject an expired proposal and keep the ledger', async () => {
+    // Arrange
+    const approvalId = await propose();
+    appDb()
+      .prepare('UPDATE approvals SET expires_at=? WHERE id=?')
+      .run(new Date(Date.now() - 1000).toISOString(), approvalId);
+    const before = await bankSnapshot();
+    // Act
+    const result = await api('POST', `approvals/${approvalId}/confirm`, { as: 'lucia' });
+    // Assert
+    assert.equal(result.status, 409);
+    assert.deepEqual(await bankSnapshot(), before);
+  });
+
+  it('should hide a proposal from another customer as not found', async () => {
+    // Arrange
+    const approvalId = await propose();
+    const before = await bankSnapshot();
+    // Act
+    const result = await api('POST', `approvals/${approvalId}/confirm`, { as: 'bruno' });
+    // Assert
+    assert.equal(result.status, 404);
+    assert.deepEqual(await bankSnapshot(), before);
   });
 });
 
