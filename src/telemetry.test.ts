@@ -44,6 +44,21 @@ describe('recordEvent', () => {
     assert.equal(stored.tool, 'transfer_money');
     assert.equal(stored.status, 'failed');
   });
+  it('should keep the arguments, output, error and duration of the event', () => {
+    // Arrange
+    const data = {
+      tool: 'transfer_money',
+      status: 'failed',
+      arguments: { amountCents: 500 },
+      output: { status: 'failed' },
+      error: 'Insufficient funds.',
+      durationMs: 42,
+    };
+    // Act
+    recordEvent(context, 'tool.failed', data);
+    // Assert
+    assert.deepEqual(JSON.parse(events()[0].data), data);
+  });
   it('should record events for runs outside a conversation', () => {
     // Arrange
     const standalone = { ...context, conversationId: null };

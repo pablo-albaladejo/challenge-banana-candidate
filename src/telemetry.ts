@@ -10,7 +10,7 @@ export function recordEvent(ctx: ToolContext, kind: string, data: Record<string,
       ctx.userId,
       ctx.conversationId,
       kind,
-      JSON.stringify({ tool: data.tool, status: data.status }),
+      JSON.stringify(data),
       new Date().toISOString(),
     );
 }
