@@ -31,6 +31,12 @@ const context = (userId = 'lucia'): ToolContext => ({
 });
 const intentRow = (id: string) =>
   appDb().prepare('SELECT * FROM intents WHERE id=?').get(id) as IntentRow | undefined;
+const approvalsFor = (intentId: string) =>
+  (
+    appDb().prepare('SELECT COUNT(*) AS n FROM approvals WHERE intent_id=?').get(intentId) as {
+      n: number;
+    }
+  ).n;
 const input = {
   fromAccountId: 'acc-lucia',
   toAccountId: 'acc-bruno',
@@ -59,6 +65,32 @@ describe('transferMoney', () => {
     assert.deepEqual((result.approval as { payload: unknown }).payload, input);
     assert.equal(intentRow(ctx.intentId)!.status, 'requires_confirmation');
     assert.deepEqual(await bankSnapshot(), before);
+  });
+  it('should reject a transfer to the same account without creating a proposal', async () => {
+    // Arrange
+    const ctx = context();
+    // Act & Assert
+    await assert.rejects(transferMoney(ctx, { ...input, toAccountId: input.fromAccountId }));
+    assert.equal(approvalsFor(ctx.intentId), 0);
+  });
+  it('should reject an unknown destination account without creating a proposal', async () => {
+    // Arrange
+    const ctx = context();
+    // Act & Assert
+    await assert.rejects(transferMoney(ctx, { ...input, toAccountId: 'acc-missing' }), (e) => {
+      assert.ok(e instanceof HttpError);
+      assert.equal(e.status, 400);
+      return true;
+    });
+    assert.equal(approvalsFor(ctx.intentId), 0);
+  });
+  it('should propose a transfer between two accounts of the same customer', async () => {
+    // Arrange
+    const ctx = context();
+    // Act
+    const result = await transferMoney(ctx, { ...input, toAccountId: 'acc-lucia-savings' });
+    // Assert
+    assert.equal(result.status, 'requires_confirmation');
   });
   it('should reject an approval that was already used with a 409 and keep the ledger', async () => {
     // Arrange
@@ -160,11 +192,14 @@ describe('transferMoney', () => {
     const ctx = context();
     const before = await bankSnapshot();
     // Act & Assert
-    await assert.rejects(transferMoney(ctx, { ...input, fromAccountId: 'acc-bruno' }), (e) => {
-      assert.ok(e instanceof HttpError);
-      assert.equal(e.status, 403);
-      return true;
-    });
+    await assert.rejects(
+      transferMoney(ctx, { ...input, fromAccountId: 'acc-bruno', toAccountId: 'acc-lucia' }),
+      (e) => {
+        assert.ok(e instanceof HttpError);
+        assert.equal(e.status, 403);
+        return true;
+      },
+    );
     assert.deepEqual(await bankSnapshot(), before);
   });
   it('should reject arguments that break the transfer schema', async () => {

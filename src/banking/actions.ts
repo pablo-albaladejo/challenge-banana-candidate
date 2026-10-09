@@ -13,7 +13,11 @@ export const transferSchema = z
     amountCents: z.number().int().positive().max(10000000),
     concept: z.string().max(200),
   })
-  .strict();
+  .strict()
+  .refine((t) => t.fromAccountId !== t.toAccountId, {
+    message: 'Source and destination accounts must differ.',
+    path: ['toAccountId'],
+  });
 export async function transferMoney(ctx: ToolContext, args: unknown): Promise<ActionResult> {
   if (person(ctx.userId)?.role !== 'customer')
     throw new HttpError(403, 'A customer account is required.');

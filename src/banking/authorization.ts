@@ -16,6 +16,10 @@ export async function authorizeTransfer(
   const accounts = await bankRequest<Account[]>(ctx.userId, '/v1/accounts');
   if (!accounts.some((a) => a.id === input.fromAccountId))
     throw new HttpError(403, 'This account does not belong to this person.');
+  const contacts = await bankRequest<{ id: string }[]>(ctx.userId, '/v1/contacts');
+  const destinations = [...accounts.map((a) => a.id), ...contacts.map((c) => c.id)];
+  if (!destinations.includes(input.toAccountId))
+    throw new HttpError(400, 'The destination account does not exist.');
   const db = appDb(),
     now = new Date().toISOString(),
     payload = JSON.stringify(input);
