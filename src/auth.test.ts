@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { actor, sameOrigin, sessionToken } from './auth';
+import { HttpError, actor, sameOrigin, sessionToken } from './auth';
 const withCookie = (cookie: string) =>
   new Request('http://localhost/api', { headers: { cookie, 'x-user-id': 'bruno' } });
 const withOrigin = (origin: string) =>
@@ -39,5 +39,22 @@ describe('sameOrigin', () => {
     const request = withOrigin('https://example.com');
     // Act & Assert
     assert.throws(() => sameOrigin(request));
+  });
+  it('should reject a browser request marked cross-site even without an origin header', () => {
+    // Arrange
+    const request = new Request('http://localhost/api', {
+      headers: { host: '127.0.0.1:3000', 'sec-fetch-site': 'cross-site' },
+    });
+    // Act & Assert
+    assert.throws(
+      () => sameOrigin(request),
+      (e) => e instanceof HttpError && e.status === 403,
+    );
+  });
+  it('should accept a non-browser client that sends neither origin nor fetch metadata', () => {
+    // Arrange
+    const request = new Request('http://localhost/api', { headers: { host: '127.0.0.1:3000' } });
+    // Act & Assert
+    assert.doesNotThrow(() => sameOrigin(request));
   });
 });

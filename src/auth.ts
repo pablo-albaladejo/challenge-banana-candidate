@@ -25,7 +25,14 @@ export function actor(request: Request) {
     throw new HttpError(401, 'Invalid session.');
   return p;
 }
+/**
+ * Browsers send Origin and Sec-Fetch-Site on cross-site POSTs, and the session cookie is
+ * SameSite=Strict. A request with neither header is a non-browser client (curl, scripts), which
+ * still needs the signed session cookie.
+ */
 export function sameOrigin(request: Request) {
+  if (request.headers.get('sec-fetch-site') === 'cross-site')
+    throw new HttpError(403, 'Origin not allowed.');
   const origin = request.headers.get('origin');
   if (origin) {
     const parsed = new URL(origin);
