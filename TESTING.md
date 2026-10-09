@@ -117,11 +117,12 @@ so `searchDocuments(<exact chunk text>)` ranks that chunk first **without any mo
 
 ## Harness (`tests/support/`)
 
-| Helper      | Use                                                                                                                                                                                  |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `bank.ts`   | `startBank()`/`stopBank()` in `before`/`after`; `resetBank(profile?, seed?)` in `beforeEach`; `bankSnapshot()`, `operationsFor(user)`, `balanceOf(account)` to assert ledger effects |
-| `openai.ts` | `startFakeOpenAI()` → `fake.script(toolCall(name, args), reply(text))`, `fake.requests`, `fake.embed(text, vector)`, `fake.reset()`, `fake.close()`                                  |
-| `api.ts`    | `api('POST', 'actions', { as: 'lucia', body })` → `{ status, body }`, calling `route.ts` in-process with a signed session                                                            |
+| Helper       | Use                                                                                                                                                                                  |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `bank.ts`    | `startBank()`/`stopBank()` in `before`/`after`; `resetBank(profile?, seed?)` in `beforeEach`; `bankSnapshot()`, `operationsFor(user)`, `balanceOf(account)` to assert ledger effects |
+| `network.ts` | `startLossyBank((method, path) => boolean)`: real network fault injection between app and bank (responses lost after the bank committed). Close it in `finally`.                     |
+| `openai.ts`  | `startFakeOpenAI()` → `fake.script(toolCall(name, args), reply(text))`, `fake.requests`, `fake.embed(text, vector)`, `fake.reset()`, `fake.close()`                                  |
+| `api.ts`     | `api('POST', 'actions', { as: 'lucia', body })` → `{ status, body }`, calling `route.ts` in-process with a signed session                                                            |
 
 ```ts
 describe('transferMoney', () => {

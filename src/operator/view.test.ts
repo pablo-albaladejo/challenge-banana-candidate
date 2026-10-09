@@ -132,4 +132,13 @@ describe('caseDetail', () => {
     assert.equal(detail.bank, null);
     assert.match(detail.gaps!, /bank/i);
   });
+  it('should show a historic intent as the bank verified it', async () => {
+    // Arrange
+    const supportCase = 'case-lucia';
+    // Act
+    const detail = await caseDetail('marta', supportCase);
+    // Assert
+    const intent = detail.intents.find((i: { id: string }) => i.id === 'intent-historic-lucia')!;
+    assert.equal(intent.status, 'completed');
+  });
 });

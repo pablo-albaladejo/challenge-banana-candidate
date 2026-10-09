@@ -2,6 +2,7 @@ import { appDb } from '../db';
 import { person } from '../people';
 import { HttpError } from '../auth';
 import { bankRequest } from '../banking/client';
+import { reconcileIntent } from '../banking/reconcile';
 type Incident = {
   id: string;
   user_id: string;
@@ -32,6 +33,10 @@ export async function caseDetail(operatorId: string, id: string) {
       .prepare('SELECT * FROM events WHERE conversation_id=? ORDER BY created_at,rowid')
       .all(incident.conversation_id) as EventRow[]
   ).map((e) => ({ ...e, data: JSON.parse(e.data) }));
+  const pending = db
+    .prepare("SELECT id FROM intents WHERE conversation_id=? AND status IN ('unknown','failed')")
+    .all(incident.conversation_id) as { id: string }[];
+  for (const { id: intentId } of pending) await reconcileIntent(incident.user_id, intentId);
   const intents = (
     db
       .prepare('SELECT * FROM intents WHERE conversation_id=? ORDER BY created_at')

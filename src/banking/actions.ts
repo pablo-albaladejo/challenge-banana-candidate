@@ -4,6 +4,8 @@ import { HttpError } from '../auth';
 import { person } from '../people';
 import { authorizeTransfer } from './authorization';
 import { dispatchTransfer } from './dispatch';
+import { BankError } from './client';
+import { reconcileIntent } from './reconcile';
 import { recordEvent } from '../telemetry';
 import type { ActionResult, ToolContext } from '../types';
 export const transferSchema = z
@@ -23,6 +25,8 @@ export async function transferMoney(ctx: ToolContext, args: unknown): Promise<Ac
     throw new HttpError(403, 'A customer account is required.');
   const input = transferSchema.parse(args),
     db = appDb();
+  // An unverified outcome is settled by the bank before anything else happens to the intent.
+  await reconcileIntent(ctx.userId, ctx.intentId);
   const previous = db
     .prepare('SELECT user_id,payload,status,bank_reference,operation_id FROM intents WHERE id=?')
     .get(ctx.intentId) as
@@ -80,17 +84,16 @@ export async function transferMoney(ctx: ToolContext, args: unknown): Promise<Ac
     });
     return { status: 'completed', operation, intentId: ctx.intentId };
   } catch (e) {
-    const message = e instanceof Error ? e.message : 'Transfer error';
-    db.prepare('UPDATE intents SET status=?,error=? WHERE id=?').run(
-      'failed',
-      message,
-      ctx.intentId,
-    );
-    recordEvent(ctx, 'transfer.failed', {
-      status: 'failed',
-      error: message,
-      intentId: ctx.intentId,
-    });
-    return { status: 'failed', error: message, intentId: ctx.intentId };
+    // A 5xx or a lost response does not prove the bank rejected the transfer: it may have committed.
+    const unconfirmed = e instanceof BankError && e.status >= 500;
+    const status = unconfirmed ? 'unknown' : 'failed';
+    const message = unconfirmed
+      ? 'The bank did not confirm this transfer. It will be checked with the bank before any retry.'
+      : e instanceof Error
+        ? e.message
+        : 'Transfer error';
+    db.prepare('UPDATE intents SET status=?,error=? WHERE id=?').run(status, message, ctx.intentId);
+    recordEvent(ctx, `transfer.${status}`, { status, error: message, intentId: ctx.intentId });
+    return { status, error: message, intentId: ctx.intentId };
   }
 }

@@ -14,6 +14,7 @@ import {
   startBank,
   stopBank,
 } from '../../tests/support/bank';
+import { startLossyBank } from '../../tests/support/network';
 import type { ActionResult, ToolContext } from '../types';
 type IntentRow = {
   user_id: string;
@@ -257,6 +258,51 @@ describe('transferMoney', () => {
     assert.equal(retry.status, 'completed');
     assert.equal((retry.operation as { id: string }).id, (first.operation as { id: string }).id);
     assert.equal(intentRow(ctx.intentId)!.status, 'completed');
+  });
+  it('should record a transfer as unknown when every bank response is lost after commit', async () => {
+    // Arrange
+    const ctx = context();
+    const proposal = await transferMoney(ctx, input);
+    ctx.approvalId = (proposal.approval as { id: string }).id;
+    const operationsBefore = (await operationsFor('lucia')).length;
+    const network = await startLossyBank(
+      (method, path) => method === 'POST' && path === '/v1/transfers',
+    );
+    // Act
+    let result: ActionResult;
+    try {
+      result = await transferMoney(ctx, input);
+    } finally {
+      await network.close();
+    }
+    // Assert
+    assert.equal(result.status, 'unknown');
+    assert.equal(intentRow(ctx.intentId)!.status, 'unknown');
+    assert.equal((await operationsFor('lucia')).length, operationsBefore + 1);
+  });
+  it('should complete an unknown intent from the bank record when it is retried', async () => {
+    // Arrange
+    const ctx = context();
+    const proposal = await transferMoney(ctx, input);
+    ctx.approvalId = (proposal.approval as { id: string }).id;
+    const network = await startLossyBank(
+      (method, path) => method === 'POST' && path === '/v1/transfers',
+    );
+    try {
+      await transferMoney(ctx, input);
+    } finally {
+      await network.close();
+    }
+    const before = await bankSnapshot();
+    // Act
+    const retry = await transferMoney(ctx, input);
+    // Assert
+    assert.equal(retry.status, 'completed');
+    const booked = before.operations.find(
+      (o) => o.reference === intentRow(ctx.intentId)!.bank_reference,
+    )!;
+    assert.equal((retry.operation as { id: string }).id, booked.id);
+    assert.deepEqual(await bankSnapshot(), before);
   });
   it('should reject reusing an intent with a different payload as a 409 conflict', async () => {
     // Arrange
