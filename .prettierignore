@@ -1,0 +1,8 @@
+.data/
+.next/
+.omc/
+node_modules/
+fixtures/
+docs/
+README.md
+package-lock.json

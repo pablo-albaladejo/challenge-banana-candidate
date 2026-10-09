@@ -17,7 +17,8 @@ export async function searchDocuments(
   return allChunks()
     .filter((c) => role === 'operator' || c.audience === 'public')
     .map(({ vector, ...c }) => {
-      if (vector!.length !== queryVector.length) throw new Error('Incompatible embedding dimensions.');
+      if (vector!.length !== queryVector.length)
+        throw new Error('Incompatible embedding dimensions.');
       const score = vector!.reduce((sum, v, i) => sum + v * queryVector[i], 0);
       return { ...c, score };
     })
