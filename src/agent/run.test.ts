@@ -79,6 +79,18 @@ describe('sendMessage', () => {
     ).map((e) => e.kind);
     assert.ok(!kinds.includes('tool.completed'));
   });
+  it('should reject a conversation owned by another customer before storing anything', async () => {
+    // Arrange
+    const before = appDb().prepare('SELECT COUNT(*) AS n FROM messages').get() as { n: number };
+    // Act & Assert
+    await assert.rejects(sendMessage('bruno', conversationId, 'Hi'), (e) => {
+      assert.ok(e instanceof HttpError);
+      assert.equal(e.status, 404);
+      return true;
+    });
+    assert.deepEqual(appDb().prepare('SELECT COUNT(*) AS n FROM messages').get(), before);
+    assert.equal(fake.requests.length, 0);
+  });
   it('should store the user message, the assistant answer and a completed run', async () => {
     // Arrange
     fake.script(reply('Hello Lucia, how can I help?'));

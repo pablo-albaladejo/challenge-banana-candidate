@@ -23,6 +23,10 @@ export async function answerWithEvidence(question: string, sources: SearchResult
   return { answer: response.output_text, model: response.model, usage: response.usage };
 }
 export async function sendMessage(userId: string, conversationId: string, content: string) {
+  const owned = appDb()
+    .prepare('SELECT 1 FROM conversations WHERE id=? AND user_id=?')
+    .get(conversationId, userId);
+  if (!owned) throw new HttpError(404, 'Conversation not found.');
   if (locks.has(conversationId))
     throw new HttpError(409, 'Wait for the previous response to finish.');
   locks.add(conversationId);
