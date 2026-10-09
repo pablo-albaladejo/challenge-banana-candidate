@@ -11,3 +11,6 @@ test-results/
 *.log
 next-env.d.ts
 .omc/
+.e2e/
+.next-e2e/
+playwright-report/

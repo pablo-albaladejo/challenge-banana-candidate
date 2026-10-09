@@ -11,6 +11,7 @@ convention changes, change it here first.
 | `npm run typecheck`    | Type-checks application and test files                                |
 | `npm run format:check` | Prettier check (`npm run format` to apply)                            |
 | Single file            | `node --import tsx --import ./tests/setup.ts --test src/auth.test.ts` |
+| `npm run test:e2e`     | Playwright browser journeys (`*.e2e.ts`) against an isolated stack    |
 
 Runner: `node:test` with `node:assert/strict`. No Jest or Vitest.
 
@@ -85,7 +86,77 @@ Because the environment is set before any module loads, tests use plain static i
 ### 6. Banned in committed tests
 
 `it.skip`, `it.only`, `it.todo`, and tests without assertions. A known bug gets a failing test in
-the same change that fixes it (red → green), not a skipped placeholder.
+the same change that fixes it (red → green), not a skipped placeholder. Never write a test that
+asserts a known-wrong behavior just to be green.
+
+## Test types
+
+| Type            | Scope                                                      | Real                               | Replaced            | File              |
+| --------------- | ---------------------------------------------------------- | ---------------------------------- | ------------------- | ----------------- |
+| **Unit**        | Pure functions only (`chunker`, `prompt`, vector helpers)  | Everything                         | Nothing             | `x.test.ts`       |
+| **Integration** | A module or route in-process, against real infrastructure  | Bank over HTTP, SQLite, `fixtures` | OpenAI (local fake) | `x.test.ts`       |
+| **E2E**         | User journeys in a browser against the whole running stack | Next, bank, SQLite                 | OpenAI (local fake) | `app/page.e2e.ts` |
+
+Integration is the bulk. Unit tests are for logic with no I/O; E2E covers a few journeys only.
+
+### The bank is a black box
+
+Evaluation may replace `simulator/` with another implementation of `docs/contracts.md`. So
+application tests (`app/`, `src/`) **never import `simulator/*`** and never mock `bankRequest`:
+they start the real simulator over HTTP with `tests/support/bank.ts` and assert on the ledger
+through its admin snapshot. Only `simulator/*.test.ts` import the simulator directly.
+
+### The model is a scripted fake
+
+Tests never reach OpenAI. `tests/support/openai.ts` starts a local server for `/v1/responses` and
+`/v1/embeddings` and points the SDK at it (`OPENAI_BASE_URL`). Script the model's turns, then
+inspect what the app sent it.
+
+Retrieval shortcut: `seedApp()` restores the index and caches the vector of every chunk text,
+so `searchDocuments(<exact chunk text>)` ranks that chunk first **without any model call**.
+
+## Harness (`tests/support/`)
+
+| Helper      | Use                                                                                                                                                                                  |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `bank.ts`   | `startBank()`/`stopBank()` in `before`/`after`; `resetBank(profile?, seed?)` in `beforeEach`; `bankSnapshot()`, `operationsFor(user)`, `balanceOf(account)` to assert ledger effects |
+| `openai.ts` | `startFakeOpenAI()` → `fake.script(toolCall(name, args), reply(text))`, `fake.requests`, `fake.embed(text, vector)`, `fake.reset()`, `fake.close()`                                  |
+| `api.ts`    | `api('POST', 'actions', { as: 'lucia', body })` → `{ status, body }`, calling `route.ts` in-process with a signed session                                                            |
+
+```ts
+describe('transferMoney', () => {
+  before(startBank);
+  after(stopBank);
+  beforeEach(() => resetBank());
+  it('should move the amount at the bank once when the transfer completes', async () => {
+    // Arrange
+    const before = await balanceOf('acc-lucia');
+    // Act
+    const result = await api('POST', 'actions', {
+      as: 'lucia',
+      body: { name: 'transfer_money', arguments: input },
+    });
+    // Assert
+    assert.equal(result.body.status, 'completed');
+    assert.equal(await balanceOf('acc-lucia'), before - input.amountCents);
+    assert.equal((await operationsFor('lucia')).length, 2); // seed history + this one
+  });
+});
+```
+
+`tests/setup.ts` reserves a free bank port per test file before `src/config.ts` loads, so files run
+in parallel without colliding.
+
+## E2E (Playwright)
+
+- Runner: `@playwright/test`, run with `npm run test:e2e`. It is the one exception to node:test.
+- Location: next to the page they drive: `app/page.e2e.ts`. The `.e2e.ts` suffix keeps them out of
+  `npm test`.
+- Same conventions: import `describe`, `it` and `expect` from `tests/support/e2e.ts` (thin aliases
+  of `test.describe` / `test`), so every case is still `it('should …')` with AAA comments.
+- Playwright starts its own isolated stack (other ports, temp data dir, fake OpenAI), so it never
+  touches a running `npm run dev` or `.data/`.
+- Select by role and visible text first; add a `data-testid` only where no accessible handle exists.
 
 ## TDD loop
 
@@ -96,15 +167,23 @@ the same change that fixes it (red → green), not a skipped placeholder.
 
 ## Current map
 
-| Source                       | Test               | Covers                                                  |
-| ---------------------------- | ------------------ | ------------------------------------------------------- |
-| `app/api/[...path]/route.ts` | `route.test.ts`    | `POST /api/search` without an API key                   |
-| `src/auth.ts`                | `auth.test.ts`     | `actor` (signed session), `sameOrigin`                  |
-| `src/seed.ts`                | `seed.test.ts`     | `seedApp`: conversations, cases, index, reproducibility |
-| `src/ingestion/pipeline.ts`  | `pipeline.test.ts` | `documents`, `readDocument`                             |
-| `simulator/bank.ts`          | `bank.test.ts`     | `transfer` ledger rules and faults, `setScenario`       |
-| `simulator/seed.ts`          | `seed.test.ts`     | `seedBank` reproducibility                              |
+| Layer       | Source                         | Test                                                  | Harness                       |
+| ----------- | ------------------------------ | ----------------------------------------------------- | ----------------------------- |
+| E2E         | `app/page.tsx` (whole stack)   | `app/page.e2e.ts` (7 journeys)                        | Playwright, fake model, bank  |
+| Integration | `app/api/[...path]/route.ts`   | `route.test.ts` (56)                                  | `api.ts`, `bank.ts`, `openai` |
+| Integration | `src/banking/*`                | `client`, `dispatch`, `authorization`, `actions` (24) | `bank.ts`                     |
+| Integration | `src/agent/*`                  | `prompt`, `tools`, `run` (31)                         | `openai.ts`, `bank.ts`        |
+| Integration | `src/retrieval/*`              | `embeddings`, `store`, `search` (34)                  | `openai.ts`, `seedApp`        |
+| Integration | `src/ingestion/*`              | `chunker` (8), `pipeline` (11)                        | `openai.ts`                   |
+| Integration | `src/operator/view.ts`         | `view.test.ts` (5)                                    | `seedApp`                     |
+| Integration | `src/{db,telemetry,people}.ts` | sibling tests (11)                                    | real SQLite                   |
+| Integration | `src/{auth,seed}.ts`           | sibling tests                                         | —                             |
+| Contract    | `simulator/{bank,seed}.ts`     | sibling tests                                         | —                             |
 
-Known gaps (no sibling test yet): `src/banking/*`, `src/agent/*`, `src/operator/view.ts`,
-`src/retrieval/search.ts`, and most routes in `route.ts`. The simulator tests document the bank
-contract; they do not protect the application, which may be evaluated against another bank.
+Not tested on purpose: `src/types.ts`, `src/config.ts` (read at import), `scripts/*` (CLI
+wrappers, exercised by the E2E stack boot), `app/layout.tsx` (covered by E2E), `simulator/server.ts`
+(external bank; replaced at evaluation).
+
+Known bugs are **not** encoded as tests, green or red. Each one gets its red test in the same change
+that fixes it (TDD). The simulator tests document the bank contract; they do not protect the
+application, which may be evaluated against another bank.

@@ -6,3 +6,7 @@ fixtures/
 docs/
 README.md
 package-lock.json
+.e2e/
+.next-e2e/
+playwright-report/
+test-results/

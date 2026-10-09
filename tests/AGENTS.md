@@ -9,15 +9,21 @@ Shared test infrastructure only. Test files themselves are **colocated** next to
 
 ## Key Files
 
-| File       | Description                                                                                                                                              |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `setup.ts` | Preloaded via `--import` into every test process: fresh temp `DATA_DIR`/`BANK_DATA_DIR` removed on exit, and `OPENAI_API_KEY=''` so no real key leaks in |
+| File                            | Description                                                                                                                  |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `setup.ts`                      | Preloaded via `--import`: temp `DATA_DIR`/`BANK_DATA_DIR`, a free `BANK_PORT`/`BANK_URL`, no OpenAI key or base URL          |
+| `support/bank.ts`               | Starts the real simulator over HTTP; `resetBank`, `bankScenario`, `bankSnapshot`, `operationsFor`, `balanceOf` via admin API |
+| `support/api.ts`                | `api(method, path, { as, body, headers })`: calls the route handlers in-process with a signed session cookie                 |
+| `support/openai.ts`             | Fake OpenAI server (Responses + Embeddings): `script(toolCall(...), reply(...))`, records every request                      |
+| `support/e2e.ts`                | Playwright aliases (`describe`/`it`/`expect`), `openAs`, admin `resetBank`/`bankSnapshot` for E2E                            |
+| `support/e2e-env.ts`            | Fixed ports, data dir, `.next-e2e` dist dir and admin secret of the E2E stack                                                |
+| `support/fake-openai-server.ts` | Standalone policy-driven fake model on port 4102 used by `playwright.config.ts`                                              |
 
 ## For AI Agents
 
 ### Working In This Directory
 
-- Do not put test cases here; put them beside the code under test. Only shared harness code (setup, future fakes such as a bank process or an OpenAI stub) belongs here.
+- Do not put test cases here; put them beside the code under test. Only shared harness code (setup, bank process, OpenAI fake, E2E helpers) belongs here.
 - `setup.ts` must run before any application module loads, because `src/config.ts` reads the environment at import time.
 
 ### Testing Requirements
@@ -34,6 +40,6 @@ Shared test infrastructure only. Test files themselves are **colocated** next to
 
 ### External
 
-- `node:test`, `node:assert/strict`, `tsx`
+- `node:test`, `node:assert/strict`, `tsx`, `@playwright/test`
 
 <!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
