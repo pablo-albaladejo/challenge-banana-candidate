@@ -1,21 +1,21 @@
 <!-- Parent: ../../AGENTS.md -->
-<!-- Generated: 2026-10-09 | Updated: 2026-10-09 -->
+<!-- Generated: 2026-10-09 | Updated: 2026-10-10 -->
 
 # [...path] (catch-all API)
 
 ## Purpose
 
-Single Next.js route handler serving every `/api/*` endpoint. `route.ts` exports one `handler` as both `GET` and `POST`, runs on `runtime = 'nodejs'`, `dynamic = 'force-dynamic'`, and wraps every response in `Cache-Control: no-store`. Routing is a hand-written if-chain on `path` (the awaited `context.params.path` array).
+Single Next.js route handler serving every `/api/*` endpoint. `route.ts` only exports `runtime = 'nodejs'`, `dynamic = 'force-dynamic'` and `GET`/`POST` = `handle` from `src/http/handle.ts`. Routing, auth, validation and error mapping live in `src/http/` (route table `src/http/routes.ts`, one handler module per resource in `src/http/handlers/`); every response carries `Cache-Control: no-store`.
 
 ## Key Files
 
-| File       | Description                                                                                                           |
-| ---------- | --------------------------------------------------------------------------------------------------------------------- |
-| `route.ts` | ~230 lines. Dispatches by `path.join('/')` and method; zod-validates bodies; central `try/catch` maps errors to JSON. |
+| File       | Description                                                                                                                           |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `route.ts` | 6 lines: the literal exports `runtime`, `dynamic`, `GET`, `POST`. Next validates these exports at build time; keep nothing else here. |
 
 ## Route table
 
-Auth column: "none" = before `actor()` runs; otherwise the actor is resolved from the `banana_actor` cookie.
+Defined in `src/http/routes.ts` (order mirrors the original if-chain; first match wins). Auth column: "none" = a public route answered before `actor()` runs; otherwise the actor is resolved from the `banana_actor` cookie. "any" routes are `ANY` in the table. A path no route matches is 404 `Route not found.` (never 405), after `sameOrigin` (POST) and `actor()` (so 401 without a session). `conversations/{id}[/messages]`, `approvals/{id}/confirm`, `incidents/{id}` and `documents/{id}[/chunks]` accept trailing segments (`*rest`).
 
 | Route                                                  | Method                                               | Auth / role                                                     | Delegates to                                                                                                                           |
 | ------------------------------------------------------ | ---------------------------------------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
@@ -42,26 +42,25 @@ Auth column: "none" = before `actor()` runs; otherwise the actor is resolved fro
 
 - Session/actor (`src/auth.ts`): cookie value is `userId.HMAC-SHA256(userId, config.sessionSecret)`; `actor()` verifies with `timingSafeEqual`, else `HttpError(401)`. `sessionSecret` defaults to `'banana-local-session'` if `SESSION_SECRET` is unset. There is no login: `POST session` accepts any known `userId`.
 - CSRF: `sameOrigin()` runs for every POST and only rejects when an `Origin` header exists and its host differs from `Host`. Requests without `Origin` pass.
-- Error mapping (catch block): `MissingOpenAIKeyError` -> 503 `{code:'missing_openai_api_key'}`; `HttpError`/`BankError` -> own status and message; `ZodError`/`SyntaxError` -> 400 `Invalid request data.`; anything else -> 500 generic message (logs only `e.name`).
-- Add a route as another `if` branch before the final 404, check the role explicitly, validate with zod, and throw `HttpError`. Next 16 passes `params` as a Promise; keep `await context.params`.
+- Error mapping (`src/http/errors.ts` `toErrorResponse`): `MissingOpenAIKeyError` -> 503 `{code:'missing_openai_api_key'}`; `HttpError`/`BankError` -> own status and message; `ZodError`/`SyntaxError` -> 400 `Invalid request data.`; anything else -> 500 generic message (logs only `e.name`).
+- Add a route as a row in `src/http/routes.ts` plus a handler in `src/http/handlers/<resource>.ts` that checks the role explicitly, validates with its own zod schema, and throws `HttpError`. Next 16 passes `params` as a Promise; `handle()` awaits `context.params`.
 - Ownership is by SQL (`WHERE ... user_id=?`) or `conversationFor`; account ownership for transfers is checked in `src/banking/authorization.ts`.
 
 ### Testing Requirements
 
-- `npm test` (sibling `route.test.ts`, conventions in `TESTING.md`), `npm run typecheck`, `npm run build` (webpack).
+- `npm test` (sibling `route.test.ts`: the HTTP integration suite through `tests/support/api.ts`, which also covers every `src/http/handlers/*` module and pins the routing quirks above; conventions in `TESTING.md`), `npm run typecheck`, `npm run build` (webpack).
 - Manual with `npm run dev` (http://127.0.0.1:3000; bank simulator via `npm run bank`): e.g. `curl -i -X POST localhost:3000/api/session -H 'content-type: application/json' -d '{"userId":"lucia"}'` and reuse the cookie. Chat/search/ingestion need `OPENAI_API_KEY`.
 
 ### Common Patterns
 
-- Helper `json(data, status, headers)` for all responses.
-- `conversationFor(id, userId)` for owned-conversation lookup.
-- Multiple `const` declarations chained with commas (`const current = actor(request), db = appDb()`).
+- `json(data, status, headers)` from `src/http/respond.ts` for all responses.
+- `conversationFor(id, userId)` (`src/http/handlers/conversations.ts`) for owned-conversation lookup.
 
 ### Things worth scrutinizing
 
-- `approvals/{id}/confirm` (route.ts ~135-156): selects the approval by id and user but does not check `consumed_at` or `expires_at` itself, and runs `transferMoney` on the stored payload; any single-use/expiry enforcement must live in `src/banking/*`. Note `authorizeTransfer` currently always returns `null` (never `requires_confirmation`), so nothing in this repo path obviously creates approvals.
-- `actions` (~110-134): `arguments` is `z.unknown()`; a client-supplied `intentId` is reused as the idempotency key. `search_documents` via `runTool` is called without the actor's role.
-- `search` and `documents*`: authz depends on `current.role`; `documents/{id}/chunks` is only role-filtered through `visible` (verify no internal chunk leak via `search`).
+- `approvals/{id}/confirm` (`src/http/handlers/approvals.ts`): selects the approval by id and user but does not check `consumed_at` or `expires_at` itself, and runs `transferMoney` on the stored payload; any single-use/expiry enforcement must live in `src/banking/*`. Note `authorizeTransfer` currently always returns `null` (never `requires_confirmation`), so nothing in this repo path obviously creates approvals.
+- `actions` (`src/http/handlers/actions.ts`): `arguments` is `z.unknown()`; a client-supplied `intentId` is reused as the idempotency key. `search_documents` via `runTool` is called without the actor's role.
+- `search` and `documents*`: authz depends on `actor.role`; `documents/{id}/chunks` is only role-filtered through `visible` (verify no internal chunk leak via `search`).
 - `preview-answer`: operator-only, but `sources` are fully client-supplied and fed to the model.
 - `session` POST: no credential check; cookie lacks `Secure`; weak default secret.
 - `dashboard` for operators returns all incidents; `incidents/{id}` is not scoped to an operator's assignment; `caseDetail` returns empty `history`/`events`/`intents`/`bank`.
@@ -71,7 +70,7 @@ Auth column: "none" = before `actor()` runs; otherwise the actor is resolved fro
 
 ### Internal
 
-- `src/auth.ts`, `src/people.ts`, `src/db.ts` (`appDb`), `src/config.ts`, `src/banking/{client,actions}.ts`, `src/agent/{run,tools}.ts`, `src/operator/view.ts`, `src/ingestion/pipeline.ts`, `src/retrieval/{search,embeddings,store}.ts`.
+- `src/http/handle.ts` only; the handlers reach `src/auth.ts`, `src/people.ts`, `src/config.ts`, `src/persistence/*`, `src/banking/{client,actions}.ts`, `src/agent/{run,tools}.ts`, `src/operator/view.ts`, `src/ingestion/pipeline.ts`, `src/retrieval/{search,embeddings,store}.ts`.
 
 ### External
 

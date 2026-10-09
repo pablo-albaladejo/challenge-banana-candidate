@@ -5,7 +5,7 @@
 
 ## Purpose
 
-Application core, imported by the Next.js catch-all route (`app/api/[...path]/route.ts`), `scripts/`, and `tests/`. Top-level files hold shared plumbing (config, app DB, identity, session auth, seed, telemetry, types); feature code lives in subdirectories. Everything here uses the **app DB** (`<DATA_DIR>/app.sqlite`); bank state lives behind HTTP in the simulator (`simulator/`), reached only via `banking/client.ts`.
+Application core, imported by the Next.js catch-all route (`app/api/[...path]/route.ts`, which delegates to `http/handle.ts`), `scripts/`, and `tests/`. Top-level files hold shared plumbing (config, app DB, identity, session auth, seed, telemetry, types); feature code lives in subdirectories. Everything here uses the **app DB** (`<DATA_DIR>/app.sqlite`); bank state lives behind HTTP in the simulator (`simulator/`), reached only via `banking/client.ts`.
 
 ## Key Files
 
@@ -26,9 +26,26 @@ Application core, imported by the Next.js catch-all route (`app/api/[...path]/ro
 | ------------ | ------------------------------------------------------------------------------ |
 | `agent/`     | OpenAI Responses loop, prompt, tool definitions (see `agent/AGENTS.md`)        |
 | `banking/`   | Signed client for the bank API and transfer workflow (see `banking/AGENTS.md`) |
+| `http/`      | HTTP layer behind the catch-all route (see `### http/` below)                  |
 | `ingestion/` | Document chunking and index build (see `ingestion/AGENTS.md`)                  |
 | `operator/`  | Operator case view (see `operator/AGENTS.md`)                                  |
 | `retrieval/` | Embeddings, vector store, search (see `retrieval/AGENTS.md`)                   |
+
+### `http/`
+
+The transport layer: no SQL (data comes from `persistence/*` and the feature modules) and no business rules beyond role checks and body validation.
+
+| File            | Description                                                                                                                                                                                                                                                           |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `handle.ts`     | `handle(request, context)`: awaits `context.params`, `sameOrigin` for every POST, public routes, then `actor()` (401 without a session, even for an unknown path), then the route table; no match is 404 `Route not found.` (never 405); errors via `toErrorResponse` |
+| `router.ts`     | `match(routes, method, segments)`: literal, `:param` and a final `*rest` pattern segment; `GET`, `POST` or `ANY`; first match wins; no match is `null`                                                                                                                |
+| `routes.ts`     | `publicRoutes` (`health`, `people`, POST `session`) and `routes`, in the order of the original if-chain. Routes that are not POST-only are `ANY` on purpose (today's endpoints answer any exported method)                                                            |
+| `context.ts`    | Handler types: `PublicHandler({ request, params })`, `Handler({ request, params, actor })`                                                                                                                                                                            |
+| `errors.ts`     | `toErrorResponse(e, requestId?)`: `MissingOpenAIKeyError` 503 + `code`, `HttpError`/`BankError` own status, `ZodError`/`SyntaxError` 400 `Invalid request data.`, else logs only the error name and answers a generic 500. `requestId` is unused for now              |
+| `respond.ts`    | `json(data, status, headers)`: `Cache-Control: no-store` merged with extra headers                                                                                                                                                                                    |
+| `handlers/*.ts` | One module per resource (`health`, `people`, `session`, `dashboard`, `conversations`, `actions`, `approvals`, `incidents`, `documents`, `preview-answer`, `search`, `ingestion`); each owns its zod body schema and its role check, in the original order             |
+
+Order quirks pinned by `app/api/[...path]/route.test.ts` (kept until the planned route-quirk cleanup): `actions` parses the body before the role check; `conversations/:id/messages` checks ownership before the body and renames the conversation before `sendMessage` runs; `preview-answer` checks the role before the body.
 
 ## For AI Agents
 
@@ -50,14 +67,14 @@ Application core, imported by the Next.js catch-all route (`app/api/[...path]/ro
 
 ### Common Patterns
 
-- Errors surface as `HttpError(status, message)`; the API route maps them to JSON.
+- Errors surface as `HttpError(status, message)`; `http/errors.ts` maps them to JSON.
 - Prepared statements with named-column inserts (`INSERT INTO t(col,...) VALUES(...)`), owned by the repo of each table; timestamps are ISO strings from `new Date().toISOString()`.
 
 ## Dependencies
 
 ### Internal
 
-- `fixtures/` (seed data, index), `simulator/` (via HTTP only), `app/api/[...path]/route.ts` (caller).
+- `fixtures/` (seed data, index), `simulator/` (via HTTP only), `app/api/[...path]/route.ts` (caller of `http/handle.ts`).
 
 ### External
 

@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-10-09 | Updated: 2026-10-09 -->
+<!-- Generated: 2026-10-09 | Updated: 2026-10-10 -->
 
 # app
 
@@ -17,9 +17,9 @@ Next.js App Router root for the Banana Bank demo. Holds the root layout, the sin
 
 ## Subdirectories
 
-| Directory        | Purpose                                                                                               |
-| ---------------- | ----------------------------------------------------------------------------------------------------- |
-| `api/[...path]/` | Catch-all route handler; every backend endpoint is dispatched from its `route.ts` (see its AGENTS.md) |
+| Directory        | Purpose                                                                                                               |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `api/[...path]/` | Catch-all route handler; its `route.ts` only re-exports `handle` from `src/http/` as `GET`/`POST` (see its AGENTS.md) |
 
 ## For AI Agents
 
