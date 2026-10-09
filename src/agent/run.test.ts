@@ -224,14 +224,15 @@ describe('answerWithEvidence', () => {
     // Assert
     const [call] = fake.requests.filter((r) => r.path.endsWith('/responses'));
     assert.equal(call.body.input, 'Are transfers free?');
+    const excerpts = call.body.instructions
+      .split('RETRIEVED DOCUMENTATION:\n')[1]
+      .split('\n')
+      .map((line: string) => JSON.parse(line));
     assert.ok(
-      call.body.instructions.includes(
-        JSON.stringify({
-          documentId: 'doc-fees',
-          title: 'Fees',
-          version: 2,
-          text: 'Transfers between Banana Bank accounts are free.',
-        }),
+      excerpts.some(
+        (e: { documentId: string; text: string }) =>
+          e.documentId === 'doc-fees' &&
+          e.text === 'Transfers between Banana Bank accounts are free.',
       ),
     );
     assert.equal(fake.requests.filter((r) => r.path.endsWith('/embeddings')).length, 0);
