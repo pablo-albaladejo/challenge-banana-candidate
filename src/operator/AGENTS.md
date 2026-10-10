@@ -19,7 +19,7 @@ Read model for human support operators: the detail of a support case (incident) 
 
 - Reads the app DB only; it does not call the bank. `operatorId` must come from `actor()`.
 - Things worth scrutinizing:
-  - `history`, `events`, `intents` are hard-coded `[]` and `bank` is `null`; the tables `messages`, `events`, `intents` (and the bank API via `banking/client.ts`) already hold the data an operator would need to understand a case, including failed or ambiguous transfers.
+  - `history`, `events`, `intents` are hard-coded `[]` and `bank` is `null`; the tables `messages`, `events`, `intents` (and the bank API via `banking/bank.ts`) already hold the data an operator would need to understand a case, including failed or ambiguous transfers.
   - `incident` is `SELECT *` with an `any` cast and is returned whole; no scoping beyond the role check.
   - Only `lastMessage` is fetched, so the operator sees one message of context.
 

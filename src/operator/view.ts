@@ -4,7 +4,7 @@ import { eventsIn } from '../persistence/events';
 import { intentsIn, unsettledIntentIds } from '../persistence/intents';
 import { person } from '../people';
 import { HttpError } from '../auth';
-import { bankRequest } from '../banking/client';
+import { operatorCustomer } from '../banking/bank';
 import { reconcileIntent } from '../banking/reconcile';
 type BankOperation = { id: string; reference: string; status: string; amountCents: number };
 /**
@@ -31,10 +31,7 @@ export async function caseDetail(operatorId: string, id: string) {
   if (!events.length) gaps.push('No agent activity was recorded for this conversation.');
   let bank: { operations: BankOperation[] } | null = null;
   try {
-    const customer = await bankRequest<{ operations: BankOperation[] }>(
-      operatorId,
-      `/v1/operator/customer?id=${encodeURIComponent(incident.user_id)}`,
-    );
+    const customer = await operatorCustomer(operatorId, incident.user_id);
     const references = new Set(intents.map((i) => i.bank_reference).filter(Boolean));
     bank = { operations: customer.operations.filter((o) => references.has(o.reference)) };
   } catch {

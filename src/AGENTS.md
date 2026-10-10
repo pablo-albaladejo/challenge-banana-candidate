@@ -5,7 +5,7 @@
 
 ## Purpose
 
-Application core, imported by the Next.js catch-all route (`app/api/[...path]/route.ts`, which delegates to `http/handle.ts`), `scripts/`, and `tests/`. Top-level files hold shared plumbing (config, app DB, identity, session auth, seed, telemetry, types); feature code lives in subdirectories. Everything here uses the **app DB** (`<DATA_DIR>/app.sqlite`); bank state lives behind HTTP in the simulator (`simulator/`), reached only via `banking/client.ts`.
+Application core, imported by the Next.js catch-all route (`app/api/[...path]/route.ts`, which delegates to `http/handle.ts`), `scripts/`, and `tests/`. Top-level files hold shared plumbing (config, app DB, identity, session auth, seed, telemetry, types); feature code lives in subdirectories. Everything here uses the **app DB** (`<DATA_DIR>/app.sqlite`); bank state lives behind HTTP in the simulator (`simulator/`), reached only via the port `banking/bank.ts` over the signed `banking/client.ts`.
 
 ## Key Files
 

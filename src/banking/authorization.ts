@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { bankRequest } from './client';
+import * as bank from './bank';
 import { HttpError } from '../auth';
 import { consumeApproval, insertApproval, liveApprovalFor } from '../persistence/approvals';
-import { updateIntent } from '../persistence/intents';
-import type { Account, ActionResult, ToolContext, TransferInput } from '../types';
+import { transition } from './intents';
+import type { ActionResult, ToolContext, TransferInput } from '../types';
 const APPROVAL_TTL_MS = 10 * 60 * 1000;
 /**
  * Money only moves after the customer reviews amount, source and destination: without an approval
@@ -13,10 +13,10 @@ export async function authorizeTransfer(
   ctx: ToolContext,
   input: TransferInput,
 ): Promise<ActionResult | null> {
-  const accounts = await bankRequest<Account[]>(ctx.userId, '/v1/accounts');
+  const accounts = await bank.accounts(ctx.userId);
   if (!accounts.some((a) => a.id === input.fromAccountId))
     throw new HttpError(403, 'This account does not belong to this person.');
-  const contacts = await bankRequest<{ id: string }[]>(ctx.userId, '/v1/contacts');
+  const contacts = await bank.contacts(ctx.userId);
   const destinations = [...accounts.map((a) => a.id), ...contacts.map((c) => c.id)];
   if (!destinations.includes(input.toAccountId))
     throw new HttpError(400, 'The destination account does not exist.');
@@ -48,7 +48,7 @@ export async function authorizeTransfer(
       expiresAt: approval.expires_at,
     });
   }
-  updateIntent(ctx.intentId, { status: 'requires_confirmation' });
+  transition(ctx.intentId, 'requires_confirmation');
   return {
     status: 'requires_confirmation',
     approval: { id: approval.id, payload: input, expiresAt: approval.expires_at },

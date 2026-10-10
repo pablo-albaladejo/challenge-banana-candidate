@@ -15,7 +15,11 @@ import {
 } from '../../tests/support/bank';
 import { approvalsFor, eventsFor, intentRow } from '../../tests/support/db';
 import { startLossyBank } from '../../tests/support/network';
-import { toolContextFactory, transferInputFactory } from '../../tests/fixtures/factories';
+import {
+  persistIntent,
+  toolContextFactory,
+  transferInputFactory,
+} from '../../tests/fixtures/factories';
 import { accounts, customers, money, operators, unknown } from '../../tests/fixtures/world';
 import type { ActionResult, ToolContext } from '../types';
 /** Proposes the transfer and confirms it, as the customer does through the approval card. */
@@ -364,5 +368,24 @@ describe('transferMoney', () => {
     assert.equal(row.operation_id, null);
     const kinds = eventsFor(ctx.runId).map((e) => e.kind);
     assert.deepEqual(kinds, ['transfer.started', 'transfer.failed']);
+  });
+  it('should create a proposal when a processing intent is proposed again with the same intent id', async () => {
+    // Arrange
+    const input = transferInputFactory.build();
+    const ctx = toolContextFactory.build();
+    persistIntent({
+      id: ctx.intentId,
+      userId: ctx.userId,
+      runId: ctx.runId,
+      payload: input,
+      status: 'processing',
+      bankReference: `ref-${ctx.intentId}`,
+    });
+    // Act
+    const result = await transferMoney(ctx, input);
+    // Assert
+    assert.equal(result.status, 'requires_confirmation');
+    assert.equal(intentRow(ctx.intentId)!.status, 'requires_confirmation');
+    assert.equal(approvalsFor(ctx.intentId), 1);
   });
 });

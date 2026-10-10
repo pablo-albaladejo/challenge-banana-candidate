@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { FunctionTool } from 'openai/resources/responses/responses';
-import { bankRequest } from '../banking/client';
+import * as bank from '../banking/bank';
 import { transferMoney } from '../banking/actions';
 import { searchDocuments } from '../retrieval/search';
 import { insertIncident, openIncidentIn } from '../persistence/incidents';
@@ -66,8 +66,8 @@ export async function runTool(name: string, args: unknown, ctx: ToolContext): Pr
     switch (name) {
       case 'list_accounts':
         result = {
-          accounts: await bankRequest(ctx.userId, '/v1/accounts'),
-          contacts: await bankRequest(ctx.userId, '/v1/contacts'),
+          accounts: await bank.accounts(ctx.userId),
+          contacts: await bank.contacts(ctx.userId),
         };
         break;
       case 'search_documents':
@@ -81,9 +81,9 @@ export async function runTool(name: string, args: unknown, ctx: ToolContext): Pr
         result = await transferMoney(ctx, args);
         break;
       case 'operation_status':
-        result = await bankRequest(
+        result = await bank.operation(
           ctx.userId,
-          `/v1/operations/${encodeURIComponent(z.object({ reference: z.string() }).parse(args).reference)}`,
+          z.object({ reference: z.string() }).parse(args).reference,
         );
         break;
       case 'request_human': {

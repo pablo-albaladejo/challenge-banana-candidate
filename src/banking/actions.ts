@@ -1,11 +1,12 @@
 import { z } from 'zod';
-import { insertIntentIfAbsent, intentById, updateIntent } from '../persistence/intents';
+import { insertIntentIfAbsent, intentById } from '../persistence/intents';
 import { HttpError } from '../auth';
 import { person } from '../people';
 import { authorizeTransfer } from './authorization';
 import { dispatchTransfer } from './dispatch';
 import { BankError } from './client';
 import { reconcileIntent } from './reconcile';
+import { transition } from './intents';
 import { recordEvent } from '../telemetry';
 import type { ActionResult, ToolContext } from '../types';
 export const transferSchema = z
@@ -57,11 +58,11 @@ export async function transferMoney(ctx: ToolContext, args: unknown): Promise<Ac
   });
   const permission = await authorizeTransfer(ctx, input);
   if (permission) return permission;
-  updateIntent(ctx.intentId, { status: 'processing' });
+  transition(ctx.intentId, 'processing');
   recordEvent(ctx, 'transfer.started', { status: 'processing', input, intentId: ctx.intentId });
   try {
     const operation = await dispatchTransfer(ctx, input);
-    updateIntent(ctx.intentId, { status: 'completed', operation_id: operation.id, error: null });
+    transition(ctx.intentId, 'completed', { operation_id: operation.id, error: null });
     recordEvent(ctx, 'transfer.completed', {
       status: 'completed',
       operation,
@@ -77,7 +78,7 @@ export async function transferMoney(ctx: ToolContext, args: unknown): Promise<Ac
       : e instanceof Error
         ? e.message
         : 'Transfer error';
-    updateIntent(ctx.intentId, { status, error: message });
+    transition(ctx.intentId, status, { error: message });
     recordEvent(ctx, `transfer.${status}`, { status, error: message, intentId: ctx.intentId });
     return { status, error: message, intentId: ctx.intentId };
   }

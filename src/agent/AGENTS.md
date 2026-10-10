@@ -19,7 +19,7 @@ The conversational assistant: retrieves documentation, calls the OpenAI Response
 
 ### Working In This Directory
 
-- Data flow: `run.ts` -> `retrieval/search.ts` (app DB chunks); `tools.ts` -> `banking/client.ts` (bank API: accounts, contacts, operations), `banking/actions.ts` (transfers), app DB (`incidents`).
+- Data flow: `run.ts` -> `retrieval/search.ts` (app DB chunks); `tools.ts` -> `banking/bank.ts` (bank API: accounts, contacts, operations), `banking/actions.ts` (transfers), app DB (`incidents`).
 - `ctx.userId` is server-set; tool args never carry a user id. `request_human` dedupes on an open incident per conversation.
 - Tool argument validation: `search_documents`, `operation_status`, `request_human` use zod in `runTool`; `transfer_money` is validated in `banking/actions.ts` (`transferSchema`, strict, max 10,000,000 cents).
 - Things worth scrutinizing:

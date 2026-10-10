@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { bankRequest, BankError } from './client';
+import { BankError } from './client';
+import * as bank from './bank';
 import { intentById, updateIntent } from '../persistence/intents';
 import type { Operation, ToolContext, TransferInput } from '../types';
 /** One bank reference per intent: retries replay the original operation instead of adding one. */
@@ -14,10 +15,7 @@ export async function dispatchTransfer(ctx: ToolContext, input: TransferInput): 
   const reference = intentReference(ctx.intentId);
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      return await bankRequest<Operation>(ctx.userId, '/v1/transfers', 'POST', {
-        ...input,
-        reference,
-      });
+      return await bank.transfer(ctx.userId, input, reference);
     } catch (e) {
       if (!(e instanceof BankError) || e.status < 500 || attempt === 1) throw e;
     }

@@ -220,23 +220,23 @@ that can break a valid case): fix the factory, not the test.
 
 ## Current map
 
-| Layer       | Source                                                                             | Test                                                                                 | Harness                       |
-| ----------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ----------------------------- |
-| E2E         | `app/page.tsx` (whole stack)                                                       | `app/page.e2e.ts` (7 journeys)                                                       | Playwright, fake model, bank  |
-| Integration | `app/api/[...path]/route.ts`, `src/http/{handle,routes}.ts`, `src/http/handlers/*` | `route.test.ts` (85): the HTTP suite through `api()`; handlers have no sibling tests | `api.ts`, `bank.ts`, `openai` |
-| Unit        | `src/http/{router,errors,respond}.ts`                                              | sibling tests (25)                                                                   | —                             |
-| Integration | `src/banking/*`                                                                    | `client`, `dispatch`, `authorization`, `actions` (24)                                | `bank.ts`                     |
-| Integration | `src/agent/*`                                                                      | `prompt`, `tools`, `run` (31)                                                        | `openai.ts`, `bank.ts`        |
-| Integration | `src/retrieval/*`                                                                  | `embeddings`, `store`, `search` (34)                                                 | `openai.ts`, `seedApp`        |
-| Integration | `src/ingestion/*`                                                                  | `chunker` (8), `pipeline` (11)                                                       | `openai.ts`                   |
-| Integration | `src/operator/view.ts`                                                             | `view.test.ts` (5)                                                                   | `seedApp`                     |
-| Integration | `src/{db,telemetry,people}.ts`                                                     | sibling tests (11)                                                                   | real SQLite                   |
-| Integration | `src/migrations.ts`                                                                | `migrations.test.ts` (5)                                                             | real SQLite files             |
-| Integration | `src/persistence/*`                                                                | one sibling test per repo (25)                                                       | real SQLite, `db.ts` readers  |
-| Unit        | `src/config.ts`                                                                    | `config.test.ts` (10): `loadConfig`, secrets check                                   | —                             |
-| Contract    | frozen import paths (plan §2)                                                      | `src/public-surface.test.ts` (15)                                                    | —                             |
-| Integration | `src/{auth,seed}.ts`                                                               | sibling tests                                                                        | —                             |
-| Contract    | `simulator/{bank,seed}.ts`                                                         | sibling tests                                                                        | —                             |
+| Layer       | Source                                                                             | Test                                                                                  | Harness                       |
+| ----------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ----------------------------- |
+| E2E         | `app/page.tsx` (whole stack)                                                       | `app/page.e2e.ts` (7 journeys)                                                        | Playwright, fake model, bank  |
+| Integration | `app/api/[...path]/route.ts`, `src/http/{handle,routes}.ts`, `src/http/handlers/*` | `route.test.ts` (85): the HTTP suite through `api()`; handlers have no sibling tests  | `api.ts`, `bank.ts`, `openai` |
+| Unit        | `src/http/{router,errors,respond}.ts`                                              | sibling tests (25)                                                                    | —                             |
+| Integration | `src/banking/*`                                                                    | `client`, `bank`, `intents`, `dispatch`, `authorization`, `reconcile`, `actions` (62) | `bank.ts`                     |
+| Integration | `src/agent/*`                                                                      | `prompt`, `tools`, `run` (31)                                                         | `openai.ts`, `bank.ts`        |
+| Integration | `src/retrieval/*`                                                                  | `embeddings`, `store`, `search` (34)                                                  | `openai.ts`, `seedApp`        |
+| Integration | `src/ingestion/*`                                                                  | `chunker` (8), `pipeline` (11)                                                        | `openai.ts`                   |
+| Integration | `src/operator/view.ts`                                                             | `view.test.ts` (5)                                                                    | `seedApp`                     |
+| Integration | `src/{db,telemetry,people}.ts`                                                     | sibling tests (11)                                                                    | real SQLite                   |
+| Integration | `src/migrations.ts`                                                                | `migrations.test.ts` (5)                                                              | real SQLite files             |
+| Integration | `src/persistence/*`                                                                | one sibling test per repo (25)                                                        | real SQLite, `db.ts` readers  |
+| Unit        | `src/config.ts`                                                                    | `config.test.ts` (10): `loadConfig`, secrets check                                    | —                             |
+| Contract    | frozen import paths (plan §2)                                                      | `src/public-surface.test.ts` (15)                                                     | —                             |
+| Integration | `src/{auth,seed}.ts`                                                               | sibling tests                                                                         | —                             |
+| Contract    | `simulator/{bank,seed}.ts`                                                         | sibling tests                                                                         | —                             |
 
 Not tested on purpose: `src/types.ts` (types only; its import is checked by `public-surface.test.ts`), `scripts/*` (CLI
 wrappers, exercised by the E2E stack boot), `app/layout.tsx` (covered by E2E), `simulator/server.ts`
