@@ -11,7 +11,7 @@ Embeddings, the SQLite-backed vector store, and semantic search over document ch
 
 | File            | Description                                                                                                                                                                                                                                                                                                                                    |
 | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `embeddings.ts` | `dimensions = 1536`; `openai()` (throws `MissingOpenAIKeyError` if `OPENAI_API_KEY` blank; `maxRetries:2`, 45 s timeout); `embedTexts(texts)` with `embedding_cache` lookup and batches of 48; `vectorBuffer`/`readVector` (Float32 BLOB); `embeddingKey` = sha256(model:dims:`text-v1`:text)                                                  |
+| `embeddings.ts` | `dimensions = 1536`; re-exports `openai()` and `MissingOpenAIKeyError` from `model/gateway.ts` (frozen surface); `embedTexts(texts)` (calls `createEmbeddings`) with `embedding_cache` lookup and batches of 48; `vectorBuffer`/`readVector` (Float32 BLOB); `embeddingKey` = sha256(model:dims:`text-v1`:text)                                |
 | `store.ts`      | `replaceChunks` (transactional full replace; sets `meta.index-model`, `meta.index-dimensions`), `allChunks()`, `indexModel()` (model of the stored index, or undefined), `chunkCount()` (`{ chunks }`), `exportIndex()`/`restoreIndex()` (gz JSON dump, `format:1`, model must equal `OPENAI_EMBEDDING_MODEL`; also refills `embedding_cache`) |
 | `search.ts`     | `searchDocuments(query, role='customer', limit=5)`: requires `indexModel()` matching config, embeds the query, loads **all** chunks, filters `audience==='public'` unless `role==='operator'`, scores by dot product, returns top `limit` as `SearchResult`                                                                                    |
 
@@ -19,7 +19,7 @@ Embeddings, the SQLite-backed vector store, and semantic search over document ch
 
 ### Working In This Directory
 
-- Index lives in app DB tables `chunks`, `embedding_cache`, `meta` (not the bank DB). Callers: `agent/run.ts`, `agent/tools.ts`, `ingestion/pipeline.ts`, `seed.ts`, the `/api/search` route.
+- Index lives in app DB tables `chunks`, `embedding_cache`, `meta` (not the bank DB). Callers: `agent/conversation.ts`, `agent/tools/search-documents.ts`, `ingestion/pipeline.ts`, `seed.ts`, the `/api/search` route.
 - Vectors are assumed normalized, so dot product = cosine; there is no ANN index (full scan on every query).
 - Things worth scrutinizing:
   - `searchDocuments` ranks purely by similarity: no filter on `validFrom`/`validTo`/`version` against `referenceDate`, no minimum score, so outdated or superseded passages can rank first and weak matches are still returned.
@@ -41,10 +41,10 @@ Embeddings, the SQLite-backed vector store, and semantic search over document ch
 
 ### Internal
 
-- `../db`, `../config`, `../types`; consumed by `../agent`, `../ingestion`, `../seed`.
+- `../db`, `../config`, `../types`, `../model/gateway` (OpenAI client); consumed by `../agent`, `../ingestion`, `../seed`.
 
 ### External
 
-- `openai` (embeddings), `node:crypto`.
+- `node:crypto` (OpenAI only through `../model/gateway`).
 
 <!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->

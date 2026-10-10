@@ -24,10 +24,11 @@ Application core, imported by the Next.js catch-all route (`app/api/[...path]/ro
 
 | Directory    | Purpose                                                                        |
 | ------------ | ------------------------------------------------------------------------------ |
-| `agent/`     | OpenAI Responses loop, prompt, tool definitions (see `agent/AGENTS.md`)        |
+| `agent/`     | Conversation, model ↔ tool loop, prompt, tool registry (see `agent/AGENTS.md`) |
 | `banking/`   | Signed client for the bank API and transfer workflow (see `banking/AGENTS.md`) |
 | `http/`      | HTTP layer behind the catch-all route (see `### http/` below)                  |
 | `ingestion/` | Document chunking and index build (see `ingestion/AGENTS.md`)                  |
+| `model/`     | Model gateway: the only OpenAI client (see `### model/` below)                 |
 | `operator/`  | Operator case view (see `operator/AGENTS.md`)                                  |
 | `retrieval/` | Embeddings, vector store, search (see `retrieval/AGENTS.md`)                   |
 
@@ -46,6 +47,14 @@ The transport layer: no SQL (data comes from `persistence/*` and the feature mod
 | `handlers/*.ts` | One module per resource (`health`, `people`, `session`, `dashboard`, `conversations`, `actions`, `approvals`, `incidents`, `documents`, `preview-answer`, `search`, `ingestion`); each owns its zod body schema and its role check, in the order pinned below                                                                                                                           |
 
 Check order pinned by `app/api/[...path]/route.test.ts`: `actions` and `preview-answer` check the role before the body; `conversations/:id/messages` checks ownership before the body and renames the conversation before `sendMessage` runs (intended when the model fails, since the message is already stored; a 409 on the conversation lock still renames it without storing the message: a known gap, not pinned).
+
+### `model/`
+
+The model gateway: the only module that builds an OpenAI client or calls the provider (`new OpenAI`, `.responses.create`, `.embeddings.create` appear nowhere else outside tests).
+
+| File         | Description                                                                                                                                                                                                                                                                                                                                    |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gateway.ts` | `openai()` builds a client per call (`maxRetries: 2`, `timeout: 45000`; throws `MissingOpenAIKeyError` when `OPENAI_API_KEY` is blank). `createResponse(body)` and `createEmbeddings(body)` are pass-throughs to the Responses and Embeddings APIs. `retrieval/embeddings.ts` re-exports `openai` and `MissingOpenAIKeyError` (frozen surface) |
 
 ## For AI Agents
 

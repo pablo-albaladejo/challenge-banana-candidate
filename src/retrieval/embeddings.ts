@@ -1,7 +1,9 @@
-import OpenAI from 'openai';
 import { createHash } from 'node:crypto';
 import { appDb } from '../db';
 import { config } from '../config';
+import { createEmbeddings } from '../model/gateway';
+// Frozen surface (plan §2): callers still import the client and its error from here.
+export { MissingOpenAIKeyError, openai } from '../model/gateway';
 export const dimensions = 1536;
 export function vectorBuffer(vector: number[]) {
   return Buffer.from(new Float32Array(vector).buffer);
@@ -16,18 +18,6 @@ export function embeddingKey(text: string) {
     .update(`${config.embeddingModel}:${dimensions}:text-v1:${text}`)
     .digest('hex');
 }
-export class MissingOpenAIKeyError extends Error {
-  constructor() {
-    super(
-      'Set OPENAI_API_KEY in .env.local or the environment to use the agent and semantic search, then restart the services.',
-    );
-    this.name = 'MissingOpenAIKeyError';
-  }
-}
-export function openai() {
-  if (!process.env.OPENAI_API_KEY?.trim()) throw new MissingOpenAIKeyError();
-  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 2, timeout: 45000 });
-}
 export async function embedTexts(texts: string[]): Promise<number[][]> {
   const db = appDb(),
     result: number[][] = new Array(texts.length),
@@ -41,7 +31,7 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
   });
   for (let offset = 0; offset < missing.length; offset += 48) {
     const batch = missing.slice(offset, offset + 48);
-    const response = await openai().embeddings.create({
+    const response = await createEmbeddings({
       model: config.embeddingModel,
       input: batch.map((x) => x.text),
       dimensions,

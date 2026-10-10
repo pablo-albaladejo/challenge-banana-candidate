@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-10-09 | Updated: 2026-10-09 -->
+<!-- Generated: 2026-10-09 | Updated: 2026-10-10 -->
 
 # scripts
 
@@ -41,10 +41,10 @@ CLI entrypoints run with `node --import tsx` (no build step). They bootstrap, ru
 
 ### Internal
 
-- `src/config`, `src/seed` (`seedApp`), `src/db` (`appDb`), `src/ingestion/pipeline`, `src/retrieval/embeddings`, `simulator/seed`, `simulator/db`, `simulator/bank` (`profiles`)
+- `src/config`, `src/seed` (`seedApp`), `src/db` (`appDb`), `src/ingestion/pipeline`, `src/retrieval/embeddings`, `src/model/gateway` (`doctor`), `simulator/seed`, `simulator/db`, `simulator/bank` (`profiles`)
 
 ### External
 
-- `tsx`, `next` (spawned via `node_modules/next/dist/bin/next`), `openai` (via `src/retrieval/embeddings`)
+- `tsx`, `next` (spawned via `node_modules/next/dist/bin/next`), `openai` (via `src/model/gateway`)
 
 <!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->

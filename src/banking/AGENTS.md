@@ -49,7 +49,7 @@ Server-side integration with the external bank simulator (HTTP, signed requests)
 
 ### Internal
 
-- `../config`, `../auth` (`sign`, `HttpError`), `../persistence/{intents,approvals}`, `../people`, `../telemetry`, `../types`; called from `../agent/tools.ts`, `../operator/view.ts` and `../http/handlers/*` (`dashboard`: `bank.ts` + `reconcile.ts`; `approvals`).
+- `../config`, `../auth` (`sign`, `HttpError`), `../persistence/{intents,approvals}`, `../people`, `../telemetry`, `../types`; called from `../agent/tools/*` (`list-accounts`, `operation-status`, `transfer-money`), `../operator/view.ts` and `../http/handlers/*` (`dashboard`: `bank.ts` + `reconcile.ts`; `approvals`).
 
 ### External
 

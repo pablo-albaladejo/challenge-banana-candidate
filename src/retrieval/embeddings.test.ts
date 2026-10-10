@@ -1,14 +1,6 @@
 import { after, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  dimensions,
-  embeddingKey,
-  embedTexts,
-  MissingOpenAIKeyError,
-  openai,
-  readVector,
-  vectorBuffer,
-} from './embeddings';
+import { dimensions, embeddingKey, embedTexts, readVector, vectorBuffer } from './embeddings';
 import { appDb } from '../db';
 import { config } from '../config';
 import { fakeEmbedding, startFakeOpenAI, type FakeOpenAI } from '../../tests/support/openai';
@@ -83,19 +75,6 @@ describe('embeddingKey', () => {
     }
     // Assert
     assert.notEqual(changed, previous);
-  });
-});
-describe('openai', () => {
-  it('should reject a blank API key with MissingOpenAIKeyError', () => {
-    // Arrange
-    const original = process.env.OPENAI_API_KEY;
-    process.env.OPENAI_API_KEY = '   ';
-    // Act & Assert
-    try {
-      assert.throws(() => openai(), MissingOpenAIKeyError);
-    } finally {
-      process.env.OPENAI_API_KEY = original;
-    }
   });
 });
 describe('embedTexts', () => {

@@ -1,7 +1,8 @@
-import { openai, embedTexts } from '../src/retrieval/embeddings';
+import { embedTexts } from '../src/retrieval/embeddings';
+import { createResponse } from '../src/model/gateway';
 import { config } from '../src/config';
 try {
-  const response = await openai().responses.create({
+  const response = await createResponse({
     model: config.chatModel,
     input: 'Reply with only: connection successful',
     reasoning: { effort: 'none' },

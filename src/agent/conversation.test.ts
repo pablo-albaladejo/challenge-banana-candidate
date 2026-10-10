@@ -1,18 +1,14 @@
 import { after, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { faker } from '@faker-js/faker';
-import { answerWithEvidence, sendMessage } from './run';
+import { sendMessage } from './conversation';
 import { appDb } from '../db';
 import { seedApp } from '../seed';
 import { HttpError } from '../auth';
 import { resetBank, startBank, stopBank } from '../../tests/support/bank';
 import { eventsFor, latestRun, messagesOf, runOf } from '../../tests/support/db';
 import { reply, startFakeOpenAI, toolCall, type FakeOpenAI } from '../../tests/support/openai';
-import {
-  persistIntent,
-  searchResultFactory,
-  transferInputFactory,
-} from '../../tests/fixtures/factories';
+import { persistIntent, transferInputFactory } from '../../tests/fixtures/factories';
 import { startLossyBank } from '../../tests/support/network';
 import { accounts, conversations, customers } from '../../tests/fixtures/world';
 
@@ -242,46 +238,5 @@ describe('sendMessage', () => {
     const result = await sendMessage(customers.lucia, conversationId, 'Second');
     // Assert
     assert.equal(result.answer, 'Second answer.');
-  });
-});
-
-describe('answerWithEvidence', () => {
-  let fake: FakeOpenAI;
-  before(async () => {
-    fake = await startFakeOpenAI();
-  });
-  after(() => fake.close());
-  beforeEach(() => fake.reset());
-
-  it('should return the model answer for the question', async () => {
-    // Arrange
-    const sources = [searchResultFactory.build()];
-    fake.script(reply('Transfers are free.'));
-    // Act
-    const result = await answerWithEvidence('Are transfers free?', sources);
-    // Assert
-    assert.equal(result.answer, 'Transfers are free.');
-  });
-
-  it('should ground the model on the supplied sources and question', async () => {
-    // Arrange
-    const source = searchResultFactory.build();
-    fake.script(reply('Transfers are free.'));
-    // Act
-    await answerWithEvidence('Are transfers free?', [source]);
-    // Assert
-    const [call] = fake.requests.filter((r) => r.path.endsWith('/responses'));
-    assert.equal(call.body.input, 'Are transfers free?');
-    const excerpts = call.body.instructions
-      .split('RETRIEVED DOCUMENTATION:\n')[1]
-      .split('\n')
-      .map((line: string) => JSON.parse(line));
-    assert.ok(
-      excerpts.some(
-        (e: { documentId: string; text: string }) =>
-          e.documentId === source.documentId && e.text === source.text,
-      ),
-    );
-    assert.equal(fake.requests.filter((r) => r.path.endsWith('/embeddings')).length, 0);
   });
 });
