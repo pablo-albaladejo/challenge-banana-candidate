@@ -84,9 +84,17 @@ export async function startBank() {
   started.kill();
   throw new Error('The bank simulator did not become healthy.');
 }
+/**
+ * Stops the simulator and waits until its process has exited, so a request made right after sees
+ * the bank as unreachable and a later `startBank()` can bind the same port again.
+ */
 export async function stopBank() {
-  child?.kill();
+  const stopping = child;
   child = undefined;
+  if (!stopping || stopping.exitCode !== null || stopping.signalCode !== null) return;
+  const exited = new Promise((resolve) => stopping.once('exit', resolve));
+  stopping.kill();
+  await exited;
 }
 /** Restores seed balances and selects a scenario profile (the profile counter restarts). */
 export async function resetBank(profile: BankProfile = 'normal', seed?: number) {

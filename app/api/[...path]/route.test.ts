@@ -19,6 +19,7 @@ import { reply, startFakeOpenAI, type FakeOpenAI } from '../../../tests/support/
 import { startLossyBank } from '../../../tests/support/network';
 import { approvalsFor, intentRow } from '../../../tests/support/db';
 import {
+  approvalFactory,
   persistIntent,
   searchResultFactory,
   transferInputFactory,
@@ -250,6 +251,15 @@ describe('GET /api/session', () => {
     assert.equal(result.status, 401);
     assert.equal(result.body.error, 'Invalid session.');
   });
+
+  it('should ask to select a person when the request has no session cookie', async () => {
+    // Arrange
+    // Act
+    const result = await api('GET', 'session');
+    // Assert
+    assert.equal(result.status, 401);
+    assert.equal(result.body.error, 'Select a person to continue.');
+  });
 });
 
 describe('GET /api/dashboard', () => {
@@ -396,6 +406,21 @@ describe('GET /api/dashboard', () => {
     const result = await api('GET', 'dashboard');
     // Assert
     assert.equal(result.status, 401);
+  });
+
+  it('should report an unreachable bank to a customer with 504 and the bank message', async () => {
+    // Arrange
+    await stopBank();
+    // Act
+    let result;
+    try {
+      result = await api('GET', 'dashboard', { as: customers.lucia });
+    } finally {
+      await startBank();
+    }
+    // Assert
+    assert.equal(result.status, 504);
+    assert.deepEqual(result.body, { error: 'No response received from the bank.' });
   });
 });
 
@@ -549,6 +574,23 @@ describe('POST /api/conversations/:id/messages', () => {
     assert.equal(result.status, 404);
     assert.equal(fake.requests.length, 0);
   });
+
+  it('should answer a provider failure with 502 and the provider message', async () => {
+    // Arrange
+    const { body } = await api('POST', 'conversations', { as: customers.lucia });
+    const providerError = { status: 429, error: 'Rate limited' };
+    fake.script(providerError, providerError, providerError);
+    // Act
+    const result = await api('POST', `conversations/${body.id}/messages`, {
+      as: customers.lucia,
+      body: { content: 'Hello' },
+    });
+    // Assert
+    assert.equal(result.status, 502);
+    assert.deepEqual(result.body, {
+      error: 'The AI provider returned 429. Check permissions and quota.',
+    });
+  });
 });
 
 describe('POST /api/actions', () => {
@@ -673,6 +715,63 @@ describe('POST /api/actions', () => {
     // Assert
     assert.equal(first.body.status, 'open');
     assert.equal(second.body.incidentId, first.body.incidentId);
+  });
+
+  it('should fail a transfer from an account of another customer with the ownership message', async () => {
+    // Arrange
+    const input = transferInputFactory.build({
+      fromAccountId: accounts.bruno,
+      toAccountId: accounts.lucia,
+    });
+    // Act
+    const result = await api('POST', 'actions', {
+      as: customers.lucia,
+      body: { name: 'transfer_money', arguments: input },
+    });
+    // Assert
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body, {
+      status: 'failed',
+      error: 'This account does not belong to this person.',
+    });
+  });
+
+  it('should fail a transfer to an unknown destination with the destination message', async () => {
+    // Arrange
+    const input = transferInputFactory.build({ toAccountId: unknown.account });
+    // Act
+    const result = await api('POST', 'actions', {
+      as: customers.lucia,
+      body: { name: 'transfer_money', arguments: input },
+    });
+    // Assert
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body, {
+      status: 'failed',
+      error: 'The destination account does not exist.',
+    });
+  });
+
+  it('should fail a transfer with the bank message when the bank does not respond', async () => {
+    // Arrange
+    const input = transferInputFactory.build();
+    await stopBank();
+    // Act
+    let result;
+    try {
+      result = await api('POST', 'actions', {
+        as: customers.lucia,
+        body: { name: 'transfer_money', arguments: input },
+      });
+    } finally {
+      await startBank();
+    }
+    // Assert
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body, {
+      status: 'failed',
+      error: 'No response received from the bank.',
+    });
   });
 });
 
@@ -1097,6 +1196,48 @@ describe('POST /api/approvals/:id/confirm', () => {
     assert.equal(result.status, 404);
     assert.deepEqual(await bankSnapshot(), before);
   });
+
+  it('should report a proposal whose intent is missing as not found', async () => {
+    // Arrange
+    const approval = approvalFactory.build({ userId: customers.lucia });
+    appDb()
+      .prepare('INSERT INTO approvals(id,user_id,intent_id,payload,expires_at) VALUES(?,?,?,?,?)')
+      .run(approval.id, approval.userId, approval.intentId, approval.payload, approval.expiresAt);
+    // Act
+    const result = await api('POST', `approvals/${approval.id}/confirm`, { as: customers.lucia });
+    // Assert
+    assert.equal(result.status, 404);
+    assert.equal(result.body.error, 'Intent not found.');
+  });
+
+  it('should reject an expired proposal with the expired-or-used message', async () => {
+    // Arrange
+    const approvalId = await propose(transferInputFactory.build());
+    appDb()
+      .prepare('UPDATE approvals SET expires_at=? WHERE id=?')
+      .run(new Date(Date.now() - 1000).toISOString(), approvalId);
+    // Act
+    const result = await api('POST', `approvals/${approvalId}/confirm`, { as: customers.lucia });
+    // Assert
+    assert.equal(result.status, 409);
+    assert.equal(result.body.error, 'This proposal has expired or was already used.');
+  });
+
+  it('should report an unreachable bank with 504 and the bank message', async () => {
+    // Arrange
+    const approvalId = await propose(transferInputFactory.build());
+    await stopBank();
+    // Act
+    let result;
+    try {
+      result = await api('POST', `approvals/${approvalId}/confirm`, { as: customers.lucia });
+    } finally {
+      await startBank();
+    }
+    // Assert
+    assert.equal(result.status, 504);
+    assert.deepEqual(result.body, { error: 'No response received from the bank.' });
+  });
 });
 
 describe('GET /api/incidents', () => {
@@ -1149,6 +1290,24 @@ describe('GET /api/incidents/:id', () => {
     const result = await api('GET', `incidents/${unknown.case}`, { as: customers.lucia });
     // Assert
     assert.equal(result.status, 403);
+  });
+
+  it('should report an unknown case to an operator with the case message', async () => {
+    // Arrange
+    // Act
+    const result = await api('GET', `incidents/${unknown.case}`, { as: operators.marta });
+    // Assert
+    assert.equal(result.status, 404);
+    assert.equal(result.body.error, 'Case not found.');
+  });
+
+  it('should reject a customer with the operator role message', async () => {
+    // Arrange
+    // Act
+    const result = await api('GET', `incidents/${unknown.case}`, { as: customers.lucia });
+    // Assert
+    assert.equal(result.status, 403);
+    assert.equal(result.body.error, 'Operator role required.');
   });
 });
 
@@ -1208,6 +1367,25 @@ describe('GET /api/documents/:id', () => {
     assert.equal(result.status, 200);
     assert.equal(result.body.audience, 'internal');
   });
+
+  it('should report an unknown document as not found with the document message', async () => {
+    // Arrange
+    // Act
+    const result = await api('GET', 'documents/does-not-exist', { as: operators.marta });
+    // Assert
+    assert.equal(result.status, 404);
+    assert.equal(result.body.error, 'Document not found.');
+  });
+
+  it('should hide an internal document from a customer with the document message', async () => {
+    // Arrange
+    const id = internalDocumentId();
+    // Act
+    const result = await api('GET', `documents/${id}`, { as: customers.lucia });
+    // Assert
+    assert.equal(result.status, 404);
+    assert.equal(result.body.error, 'Document not found.');
+  });
 });
 
 describe('GET /api/documents/:id/chunks', () => {
@@ -1231,6 +1409,16 @@ describe('GET /api/documents/:id/chunks', () => {
     const result = await api('GET', `documents/${id}/chunks`, { as: customers.lucia });
     // Assert
     assert.equal(result.status, 404);
+  });
+
+  it('should hide the chunks of an internal document from a customer with the document message', async () => {
+    // Arrange
+    const id = internalDocumentId();
+    // Act
+    const result = await api('GET', `documents/${id}/chunks`, { as: customers.lucia });
+    // Assert
+    assert.equal(result.status, 404);
+    assert.equal(result.body.error, 'Document not found.');
   });
 });
 
@@ -1290,6 +1478,15 @@ describe('POST /api/ingestion', () => {
     const result = await api('POST', 'ingestion', { as: customers.lucia });
     // Assert
     assert.equal(result.status, 403);
+  });
+
+  it('should reject a customer with the operator role message', async () => {
+    // Arrange
+    // Act
+    const result = await api('POST', 'ingestion', { as: customers.lucia });
+    // Assert
+    assert.equal(result.status, 403);
+    assert.equal(result.body.error, 'Operator role required.');
   });
 });
 

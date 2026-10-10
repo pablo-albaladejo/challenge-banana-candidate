@@ -49,7 +49,7 @@ Defined in `src/server/routes.ts` (order mirrors the original if-chain; first ma
 
 ### Testing Requirements
 
-- `npm test` (sibling `route.test.ts`: the HTTP integration suite through `tests/support/api.ts`, which also covers every feature `http/` handler and pins the routing order, methods and exact paths above; conventions in `TESTING.md`), `npm run typecheck`, `npm run build` (webpack).
+- `npm test` (sibling `route.test.ts`: the HTTP integration suite through `tests/support/api.ts`, which also covers every feature `http/` handler and pins the routing order, methods and exact paths above, the exact `body.error` of every HTTP error, and the bank-stopped answers (504 `No response received from the bank.`, bank restarted in `finally`); conventions in `TESTING.md`), `npm run typecheck`, `npm run build` (webpack).
 - Manual with `npm run dev` (http://127.0.0.1:3000; bank simulator via `npm run bank`): e.g. `curl -i -X POST localhost:3000/api/session -H 'content-type: application/json' -d '{"userId":"lucia"}'` and reuse the cookie. Chat/search/ingestion need `OPENAI_API_KEY`.
 
 ### Common Patterns

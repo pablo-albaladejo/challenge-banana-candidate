@@ -42,4 +42,4 @@ export function assertProductionSecrets(config: Config, nodeEnv: string | undefi
       `Set ${weak.join(', ')} to random values of at least ${MIN_SECRET_LENGTH} characters in production.`,
     );
 }
-export const referenceDate = '2026-09-24';
+export { referenceDate } from '../shared/domain/reference-date';

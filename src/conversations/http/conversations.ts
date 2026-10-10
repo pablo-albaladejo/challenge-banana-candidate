@@ -4,6 +4,7 @@ import { HttpError } from '../../platform/http/http-error';
 import { conversationsOf, insertConversation, renameConversation } from '../conversations.repo';
 import { conversationFor } from '../ownership';
 import { messagesIn } from '../messages.repo';
+// eslint-disable-next-line no-restricted-imports -- moves to assistant in 7b/7c
 import { sendMessage } from '../../assistant';
 import { json } from '../../platform/http/respond';
 import type { Handler } from '../../platform/http/context';

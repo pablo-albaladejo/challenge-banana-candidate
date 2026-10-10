@@ -58,6 +58,16 @@ describe('caseDetail', () => {
     // Act & Assert
     await assert.rejects(caseDetail(stranger, caseId), rejectsWith(403));
   });
+  it('should name the operator role when a customer opens a case', async () => {
+    // Arrange
+    const customer = customers.lucia;
+    // Act & Assert
+    await assert.rejects(caseDetail(customer, caseId), (e) => {
+      assert.ok(e instanceof HttpError);
+      assert.equal(e.message, 'Operator role required.');
+      return true;
+    });
+  });
   it('should report an unknown case as 404', async () => {
     // Arrange
     const missing = unknown.case;

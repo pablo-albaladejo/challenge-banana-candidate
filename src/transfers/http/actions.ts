@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { HttpError } from '../../platform/http/http-error';
+// eslint-disable-next-line no-restricted-imports -- moves to assistant in 7b/7c
 import { runTool } from '../../assistant';
 import { conversationFor } from '../../conversations';
 import { json } from '../../platform/http/respond';

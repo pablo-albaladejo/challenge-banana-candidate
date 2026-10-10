@@ -230,6 +230,30 @@ describe('sendMessage', () => {
     assert.equal((await first).answer, 'First answer.');
   });
 
+  it('should name the missing conversation when another customer owns it', async () => {
+    // Arrange
+    const stranger = customers.bruno;
+    // Act & Assert
+    await assert.rejects(sendMessage(stranger, conversationId, 'Hi'), (e) => {
+      assert.ok(e instanceof HttpError);
+      assert.equal(e.message, 'Conversation not found.');
+      return true;
+    });
+  });
+
+  it('should ask to wait for the previous response while the conversation is answering', async () => {
+    // Arrange
+    fake.script(reply('First answer.'));
+    const first = sendMessage(customers.lucia, conversationId, 'First');
+    // Act & Assert
+    await assert.rejects(sendMessage(customers.lucia, conversationId, 'Second'), (e) => {
+      assert.ok(e instanceof HttpError);
+      assert.equal(e.message, 'Wait for the previous response to finish.');
+      return true;
+    });
+    await first;
+  });
+
   it('should accept a new message once the previous one has finished', async () => {
     // Arrange
     fake.script(reply('First answer.'), reply('Second answer.'));

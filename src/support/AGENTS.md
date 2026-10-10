@@ -29,7 +29,7 @@ Human support: the support cases (incidents) opened by customers or by the agent
 
 ### Testing Requirements
 
-- `operator-view.test.ts` (seeded app, real bank), `incidents.repo.test.ts`, `tools/request-human.tool.test.ts`; the handlers through `app/api/[...path]/route.test.ts`; E2E "Operator inbox" journeys.
+- `operator-view.test.ts` (seeded app, real bank; pins the exact 403 message), `incidents.repo.test.ts`, `tools/request-human.tool.test.ts`; the handlers through `app/api/[...path]/route.test.ts`; E2E "Operator inbox" journeys.
 
 ### Common Patterns
 

@@ -26,7 +26,7 @@ The conversational assistant: retrieves documentation, calls the OpenAI Response
 ### Working In This Directory
 
 - Data flow: `conversation.ts` -> `searchDocuments` (`../knowledge`) -> `loop.ts` -> `../platform/model/gateway.ts` (OpenAI) and `tool-registry.ts` -> the tools of `../accounts`, `../knowledge`, `../transfers` and `../support`.
-- A new tool is one `tools/<name>.tool.ts` file in the feature that owns it, exporting a `Tool` (`import type` from `../assistant`; ESLint rejects a value import, which would form a runtime cycle) through that feature's `index.ts`, and added to the `tools` list in `tool-registry.ts`. `tool-registry.test.ts` and `loop.test.ts` pin the serialized definitions byte for byte against `tests/fixtures/tool-definitions.ts`: a deliberate change to a definition updates that fixture.
+- A new tool is one `tools/<name>.tool.ts` file in the feature that owns it, exporting a `Tool` (`import type` from `../assistant`; the vertical-rank lint rule rejects a value import, which would form a runtime cycle) through that feature's `index.ts`, and added to the `tools` list in `tool-registry.ts`. `tool-registry.test.ts` and `loop.test.ts` pin the serialized definitions byte for byte against `tests/fixtures/tool-definitions.ts`: a deliberate change to a definition updates that fixture.
 - `ctx.userId` is server-set; tool args never carry a user id. `request_human` dedupes on an open incident per conversation.
 - Tool argument validation: `search_documents`, `operation_status`, `request_human` use zod in their `execute`; `transfer_money` is validated in `../transfers/transfer-money.ts` (`transferSchema`, strict, max 10,000,000 cents).
 - Things worth scrutinizing:
@@ -36,7 +36,7 @@ The conversational assistant: retrieves documentation, calls the OpenAI Response
 
 ### Testing Requirements
 
-- Integration tests against the fake OpenAI (`tests/support/openai.ts`) and the real bank: `conversation.test.ts` (`sendMessage`), `evidence.test.ts` (incl. request settings), `loop.test.ts` (rounds, malformed arguments, intent ids, override in the arguments, golden tools and request settings), `prompt.test.ts`, `tool-registry.test.ts` (golden definitions, unknown tool, events), `strict-schema.test.ts` (unit) and `runs.repo.test.ts`. Each tool's own test lives next to it in its feature. `npm run doctor` is the real-API smoke test (spends quota).
+- Integration tests against the fake OpenAI (`tests/support/openai.ts`) and the real bank: `conversation.test.ts` (`sendMessage`, incl. the exact 404 and 409 messages), `evidence.test.ts` (incl. request settings), `loop.test.ts` (rounds, malformed arguments, intent ids, override in the arguments, golden tools and request settings), `prompt.test.ts`, `tool-registry.test.ts` (golden definitions, unknown tool, events, and `runTool error text`: the exact `{ status: 'failed', error }` of every tool error path, incl. the bank-stopped and bank 404 texts), `strict-schema.test.ts` (unit) and `runs.repo.test.ts`. Each tool's own test lives next to it in its feature. `npm run doctor` is the real-API smoke test (spends quota).
 
 ### Common Patterns
 
