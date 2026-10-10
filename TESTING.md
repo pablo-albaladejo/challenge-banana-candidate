@@ -223,7 +223,8 @@ that can break a valid case): fix the factory, not the test.
 
 | Layer       | Source                                                                             | Test                                                                                                                                              | Harness                       |
 | ----------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
-| E2E         | `app/page.tsx` (whole stack)                                                       | `app/page.e2e.ts` (7 journeys)                                                                                                                    | Playwright, fake model, bank  |
+| E2E         | `app/page.tsx` + `app/_ui/*` (whole stack)                                         | `app/page.e2e.ts` (11 journeys)                                                                                                                   | Playwright, fake model, bank  |
+| Unit        | `app/_ui/format.ts`                                                                | `format.test.ts` (4): `money`, `date`                                                                                                             | —                             |
 | Integration | `app/api/[...path]/route.ts`, `src/http/{handle,routes}.ts`, `src/http/handlers/*` | `route.test.ts` (100): the HTTP suite through `api()`; handlers have no sibling tests                                                             | `api.ts`, `bank.ts`, `openai` |
 | Unit        | `src/http/{router,errors,respond}.ts`                                              | sibling tests (25)                                                                                                                                | —                             |
 | Integration | `src/banking/*`                                                                    | `client`, `bank`, `intents`, `dispatch`, `authorization`, `reconcile`, `actions` (78)                                                             | `bank.ts`                     |
@@ -241,8 +242,8 @@ that can break a valid case): fix the factory, not the test.
 | Contract    | `simulator/{bank,seed}.ts`                                                         | sibling tests                                                                                                                                     | —                             |
 
 Not tested on purpose: `src/types.ts` (types only; its import is checked by `public-surface.test.ts`), `scripts/*` (CLI
-wrappers, exercised by the E2E stack boot), `app/layout.tsx` (covered by E2E), `simulator/server.ts`
-(external bank; replaced at evaluation).
+wrappers, exercised by the E2E stack boot), `app/layout.tsx` and the presentational `app/_ui/*.tsx` panels (covered by
+E2E), `simulator/server.ts` (external bank; replaced at evaluation).
 
 Known bugs are **not** encoded as tests, green or red. Each one gets its red test in the same change
 that fixes it (TDD). The simulator tests document the bank contract; they do not protect the
