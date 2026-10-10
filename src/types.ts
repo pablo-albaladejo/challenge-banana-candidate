@@ -31,8 +31,21 @@ export type ToolContext = {
   runId: string;
   intentId: string;
   approvalId?: string;
+  /**
+   * Set only by the customer's "send anyway" in the UI (`POST /api/actions`), never by the model:
+   * the pending intent the customer chose to send a matching transfer past.
+   */
+  overridePendingIntentId?: string;
 };
-export type ActionResult = { status: string; [key: string]: unknown };
+/** A new proposal held back because a matching transfer is still being verified with the bank. */
+export type RequiresReviewResult = {
+  status: 'requires_review';
+  pendingIntentId: string;
+  intentId: string;
+  error: string;
+  [key: string]: unknown;
+};
+export type ActionResult = RequiresReviewResult | { status: string; [key: string]: unknown };
 export type DocumentRecord = {
   id: string;
   title: string;

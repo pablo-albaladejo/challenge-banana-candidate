@@ -34,7 +34,17 @@ export async function bankRequest<T>(
   } catch {
     throw new BankError(504, 'No response received from the bank.');
   }
-  const data = await response.json();
-  if (!response.ok) throw new BankError(response.status, data.error || 'Bank service error.');
+  // A body that cannot be read (not JSON, empty, or cut off while streaming) does not prove what
+  // the bank did: report it as unverified (>= 502), so dispatch retries and the intent is `unknown`.
+  let data: { error?: string } | null;
+  try {
+    data = await response.json();
+  } catch {
+    throw new BankError(
+      response.ok ? 502 : Math.max(response.status, 502),
+      'Unreadable bank response.',
+    );
+  }
+  if (!response.ok) throw new BankError(response.status, data?.error || 'Bank service error.');
   return data as T;
 }

@@ -36,6 +36,7 @@ A secondary cause: configuration, health and logging were built for local develo
 
 ### P0-1. A non-JSON or aborted bank body is reported as a definitive `failed`
 
+- **Status: fixed.** Fixed: `bankRequest` turns an unreadable body (non-JSON, empty, cut off while streaming) into `BankError(ok ? 502 : max(status, 502), 'Unreadable bank response.')`, so dispatch retries it, the intent is `unknown` and reconcile settles it; `startLossyBank` gained `html-502`, `empty` and `truncated` faults to prove it.
 - **Category:** defect, integrity of a money outcome. Found by both reviews.
 - **Evidence:**
   - `src/banking/client.ts:37`: `await response.json()` sits outside the try block. An HTML 502 from a gateway, an empty body, or a timeout abort while the body streams throws `SyntaxError` / `DOMException`, not `BankError`.
@@ -60,6 +61,7 @@ A secondary cause: configuration, health and logging were built for local develo
 
 ### P0-2. Intents stuck in `processing` can never be recovered
 
+- **Status: fixed.** Fixed: `reconcileIntent` settles a `processing` intent with a bank reference once its dispatch is stale: `dispatched_at` (migration 2, set with `processing`; `created_at` on older rows) older than `staleProcessingMs()` = 2 × `bankTimeoutMs` × `DISPATCH_ATTEMPTS`. Found → `completed`; a bank 404 → `failed` only once stale; unreachable → unchanged. Dispatches in flight are skipped through a per-process registry (`isDispatching`); single instance assumed, with `dispatched_at` covering restarts and HMR. Re-proposing a `processing` intent answers 409, and a transition lost to a concurrent writer answers with the stored outcome.
 - **Category:** defect.
 - **Evidence:** `actions.ts` sets `processing` after consuming the approval; `reconcile.ts:15` only handles `unknown` / `failed`; a retry hits the consumed approval in `authorization.ts` and gets 409.
 - **Failure:** the process restarts or crashes, or the request is killed mid-dispatch (Next dev reload, deploy). The bank reference is persisted and the bank may have committed, but the intent stays `processing` forever. The operator view shows a wrong state.
@@ -68,6 +70,7 @@ A secondary cause: configuration, health and logging were built for local develo
 
 ### P0-3. `unknown` intents are never reconciled on the customer's side
 
+- **Status: fixed.** Fixed: `GET /api/dashboard` reconciles the customer's 10 newest `unknown`/`processing` intents, plus `failed` ones with a bank reference from the last 24 h, with `Promise.allSettled`, and returns them as `pendingTransfers`. The UI lists them under "Recent transfer checks" as "Checking with the bank", "Completed" or "Not executed".
 - **Category:** defect.
 - **Evidence:**
   - `actions.ts` tells the customer "It will be checked with the bank before any retry".
@@ -84,6 +87,7 @@ A secondary cause: configuration, health and logging were built for local develo
 
 ### P0-4. Retrying after `unknown` creates a new intent, so the bank may execute the transfer twice
 
+- **Status: fixed.** Fixed: on every proposal and every confirmation, `authorizeTransfer` reconciles the customer's other `unknown`/`processing` intents with the identical payload. If one is still unresolved, it returns `requires_review` with its `pendingIntentId`, and creates or consumes no approval. The UI's "Send anyway" resends the proposal or re-confirms with `overridePendingIntentId`, which goes through `POST /api/actions` or `POST /api/approvals/:id/confirm` only (a `ToolContext` field the model cannot set). The override is honoured only for the newest unresolved twin; `completed` and `failed` twins never hold. On a confirmation, the final twin check, the approval consume and the move to `processing` run as one `BEGIN IMMEDIATE` transaction with no await in between, so two identical proposals confirmed at the same time dispatch once and the other is held naming the first. A re-proposal overtaken by a confirmation answers the stored outcome and writes no orphan approval. Known friction: after "Send anyway" on a proposal, confirming it while the twin is still unresolved asks a second time.
 - **Category:** defect, duplicate money movement.
 - **Evidence:**
   - The Transfers form never sends `intentId` (`app/page.tsx:247-256`), so the route mints a fresh one every time (`route.ts:131`).

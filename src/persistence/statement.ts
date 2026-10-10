@@ -14,3 +14,11 @@ export function statement(sql: string): Database.Statement {
   if (!prepared) cache.set(sql, (prepared = db.prepare(sql)));
   return prepared;
 }
+/**
+ * Runs `step` as one `BEGIN IMMEDIATE` transaction on the app connection: it takes the write lock
+ * before its first read, so no other writer can change what it reads before it writes. `step` must
+ * be synchronous; if it throws, every write it made is rolled back and the error propagates.
+ */
+export function atomically<T>(step: () => T): T {
+  return appDb().transaction(step).immediate();
+}

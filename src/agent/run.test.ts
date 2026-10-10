@@ -1,5 +1,6 @@
 import { after, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { faker } from '@faker-js/faker';
 import { answerWithEvidence, sendMessage } from './run';
 import { appDb } from '../db';
 import { seedApp } from '../seed';
@@ -7,7 +8,12 @@ import { HttpError } from '../auth';
 import { resetBank, startBank, stopBank } from '../../tests/support/bank';
 import { eventsFor, latestRun, messagesOf, runOf } from '../../tests/support/db';
 import { reply, startFakeOpenAI, toolCall, type FakeOpenAI } from '../../tests/support/openai';
-import { searchResultFactory } from '../../tests/fixtures/factories';
+import {
+  persistIntent,
+  searchResultFactory,
+  transferInputFactory,
+} from '../../tests/fixtures/factories';
+import { startLossyBank } from '../../tests/support/network';
 import { accounts, conversations, customers } from '../../tests/fixtures/world';
 
 const conversationId = conversations.luciaWelcome;
@@ -151,6 +157,35 @@ describe('sendMessage', () => {
     assert.equal(result.answer, 'You have two accounts.');
   });
 
+  it('should tell the model when a matching transfer is still being verified with the bank', async () => {
+    // Arrange
+    const input = transferInputFactory.build();
+    const pending = persistIntent({
+      status: 'unknown',
+      payload: input,
+      bankReference: `ref-${faker.string.uuid()}`,
+    });
+    fake.script(toolCall('transfer_money', input, 'call-held'), reply('It is being verified.'));
+    const network = await startLossyBank(
+      (method, path) => method === 'GET' && path.startsWith('/v1/operations/'),
+    );
+    // Act
+    try {
+      await sendMessage(customers.lucia, conversationId, 'Send it again');
+    } finally {
+      await network.close();
+    }
+    // Assert
+    const second = fake.requests.filter((r) => r.path.endsWith('/responses'))[1];
+    const output = second.body.input.find(
+      (item: { type?: string; call_id?: string }) =>
+        item.type === 'function_call_output' && item.call_id === 'call-held',
+    );
+    const parsed = JSON.parse(output.output);
+    assert.equal(parsed.status, 'requires_review');
+    assert.equal(parsed.pendingIntentId, pending.id);
+    assert.match(parsed.error, /still being verified with the bank/);
+  });
   it('should record the tool events of the run', async () => {
     // Arrange
     fake.script(toolCall('list_accounts', {}), reply('Done.'));

@@ -94,7 +94,8 @@ export default function Home() {
   const [text, setText] = useState(''),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
-    [notice, setNotice] = useState('');
+    [notice, setNotice] = useState(''),
+    [review, setReview] = useState<AnyRecord | null>(null);
   const [docs, setDocs] = useState<AnyRecord[]>([]),
     [document, setDocument] = useState<AnyRecord | null>(null),
     [query, setQuery] = useState(''),
@@ -128,6 +129,7 @@ export default function Home() {
     setSources(null);
     setError('');
     setNotice('');
+    setReview(null);
     setBusy(false);
     setText('');
     setFrom('');
@@ -238,23 +240,33 @@ export default function Home() {
       if (g === generation.current) setError((e as Error).message);
     }
   }
-  async function submitTransfer() {
+  /** Sends the form; `held` resends a transfer held for review past its pending match. */
+  async function submitTransfer(held?: AnyRecord) {
     const g = generation.current;
     setBusy(true);
     setError('');
     setNotice('');
+    setReview(null);
+    const args = held?.arguments ?? {
+      fromAccountId: from,
+      toAccountId: to,
+      amountCents: Math.round(Number(amount.replace(',', '.')) * 100),
+      concept,
+    };
     try {
       const result = await api('actions', {
         name: 'transfer_money',
-        arguments: {
-          fromAccountId: from,
-          toAccountId: to,
-          amountCents: Math.round(Number(amount.replace(',', '.')) * 100),
-          concept,
-        },
+        arguments: args,
         conversationId,
+        ...(held ? { intentId: held.intentId, overridePendingIntentId: held.pendingIntentId } : {}),
       });
       if (g !== generation.current) return;
+      if (result.status === 'requires_review')
+        setReview({
+          arguments: args,
+          intentId: result.intentId,
+          pendingIntentId: result.pendingIntentId,
+        });
       setNotice(
         result.status === 'completed'
           ? 'Transfer completed. You can check it in your activity.'
@@ -269,11 +281,18 @@ export default function Home() {
       if (g === generation.current) setBusy(false);
     }
   }
-  async function confirm(id: string) {
+  /** Confirms a proposal; `overridePendingIntentId` is the customer's "send anyway". */
+  async function confirm(id: string, overridePendingIntentId?: string) {
     const g = generation.current;
+    setReview(null);
     try {
-      const result = await api(`approvals/${id}/confirm`, {});
+      const result = await api(
+        `approvals/${id}/confirm`,
+        overridePendingIntentId ? { overridePendingIntentId } : {},
+      );
       if (g !== generation.current) return;
+      if (result.status === 'requires_review')
+        setReview({ approvalId: id, pendingIntentId: result.pendingIntentId });
       setNotice(
         result.status === 'completed'
           ? 'Transfer confirmed and completed.'
@@ -402,7 +421,26 @@ export default function Home() {
           {notice && (
             <div className="alert notice" role="status">
               {notice}
-              <button onClick={() => setNotice('')} aria-label="Dismiss notice">
+              {review && (
+                <button
+                  className="text-button"
+                  disabled={busy}
+                  onClick={() =>
+                    review.approvalId
+                      ? confirm(review.approvalId, review.pendingIntentId)
+                      : submitTransfer(review)
+                  }
+                >
+                  Send anyway
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setNotice('');
+                  setReview(null);
+                }}
+                aria-label="Dismiss notice"
+              >
                 ×
               </button>
             </div>
@@ -731,6 +769,27 @@ export default function Home() {
                       <button className="primary-button" onClick={() => confirm(a.id)}>
                         Confirm these details
                       </button>
+                    </div>
+                  ))}
+                </section>
+              )}
+              {dashboard.pendingTransfers?.length > 0 && (
+                <section className="panel approvals" role="status" aria-live="polite">
+                  <h2>Recent transfer checks</h2>
+                  {dashboard.pendingTransfers.map((t: AnyRecord) => (
+                    <div key={t.id}>
+                      <p>
+                        <strong>{money(t.payload.amountCents)}</strong> · {t.payload.fromAccountId}{' '}
+                        → {t.payload.toAccountId}
+                      </p>
+                      <p>{t.payload.concept}</p>
+                      <p>
+                        {t.status === 'completed'
+                          ? 'Completed'
+                          : t.status === 'failed'
+                            ? 'Not executed'
+                            : 'Checking with the bank'}
+                      </p>
                     </div>
                   ))}
                 </section>

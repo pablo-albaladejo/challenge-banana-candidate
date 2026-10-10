@@ -117,13 +117,13 @@ so `searchDocuments(<exact chunk text>)` ranks that chunk first **without any mo
 
 ## Harness (`tests/support/`)
 
-| Helper       | Use                                                                                                                                                                                  |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `bank.ts`    | `startBank()`/`stopBank()` in `before`/`after`; `resetBank(profile?, seed?)` in `beforeEach`; `bankSnapshot()`, `operationsFor(user)`, `balanceOf(account)` to assert ledger effects |
-| `network.ts` | `startLossyBank((method, path) => boolean)`: real network fault injection between app and bank (responses lost after the bank committed). Close it in `finally`.                     |
-| `openai.ts`  | `startFakeOpenAI()` → `fake.script(toolCall(name, args), reply(text))`, `fake.requests`, `fake.embed(text, vector)`, `fake.reset()`, `fake.close()`                                  |
-| `api.ts`     | `api('POST', 'actions', { as: 'lucia', body })` → `{ status, body }`, calling `route.ts` in-process with a signed session                                                            |
-| `db.ts`      | `intentRow(id)`, `approvalsFor(intentId)`, `runOf(runId)`, `latestRun()`, `messagesOf(runId)`, `events()`, `eventsFor(runId)`: read what the app stored                              |
+| Helper       | Use                                                                                                                                                                                                                                                                     |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bank.ts`    | `startBank()`/`stopBank()` in `before`/`after`; `resetBank(profile?, seed?)` in `beforeEach`; `bankSnapshot()`, `operationsFor(user)`, `balanceOf(account)` to assert ledger effects                                                                                    |
+| `network.ts` | `startLossyBank((method, path) => boolean, fault?)`: real network fault injection between app and bank after the bank processed the request: `drop` (lost response, default), `html-502`, `empty`, `truncated`, `hang` (held until `release()`). Close it in `finally`. |
+| `openai.ts`  | `startFakeOpenAI()` → `fake.script(toolCall(name, args), reply(text))`, `fake.requests`, `fake.embed(text, vector)`, `fake.reset()`, `fake.close()`                                                                                                                     |
+| `api.ts`     | `api('POST', 'actions', { as: 'lucia', body })` → `{ status, body }`, calling `route.ts` in-process with a signed session                                                                                                                                               |
+| `db.ts`      | `intentRow(id)`, `approvalsFor(intentId)`, `runOf(runId)`, `latestRun()`, `messagesOf(runId)`, `events()`, `eventsFor(runId)`: read what the app stored                                                                                                                 |
 
 ```ts
 describe('transferMoney', () => {
@@ -223,16 +223,16 @@ that can break a valid case): fix the factory, not the test.
 | Layer       | Source                                                                             | Test                                                                                  | Harness                       |
 | ----------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ----------------------------- |
 | E2E         | `app/page.tsx` (whole stack)                                                       | `app/page.e2e.ts` (7 journeys)                                                        | Playwright, fake model, bank  |
-| Integration | `app/api/[...path]/route.ts`, `src/http/{handle,routes}.ts`, `src/http/handlers/*` | `route.test.ts` (85): the HTTP suite through `api()`; handlers have no sibling tests  | `api.ts`, `bank.ts`, `openai` |
+| Integration | `app/api/[...path]/route.ts`, `src/http/{handle,routes}.ts`, `src/http/handlers/*` | `route.test.ts` (100): the HTTP suite through `api()`; handlers have no sibling tests | `api.ts`, `bank.ts`, `openai` |
 | Unit        | `src/http/{router,errors,respond}.ts`                                              | sibling tests (25)                                                                    | —                             |
-| Integration | `src/banking/*`                                                                    | `client`, `bank`, `intents`, `dispatch`, `authorization`, `reconcile`, `actions` (62) | `bank.ts`                     |
-| Integration | `src/agent/*`                                                                      | `prompt`, `tools`, `run` (31)                                                         | `openai.ts`, `bank.ts`        |
+| Integration | `src/banking/*`                                                                    | `client`, `bank`, `intents`, `dispatch`, `authorization`, `reconcile`, `actions` (78) | `bank.ts`                     |
+| Integration | `src/agent/*`                                                                      | `prompt`, `tools`, `run` (41)                                                         | `openai.ts`, `bank.ts`        |
 | Integration | `src/retrieval/*`                                                                  | `embeddings`, `store`, `search` (34)                                                  | `openai.ts`, `seedApp`        |
 | Integration | `src/ingestion/*`                                                                  | `chunker` (8), `pipeline` (11)                                                        | `openai.ts`                   |
 | Integration | `src/operator/view.ts`                                                             | `view.test.ts` (5)                                                                    | `seedApp`                     |
 | Integration | `src/{db,telemetry,people}.ts`                                                     | sibling tests (11)                                                                    | real SQLite                   |
-| Integration | `src/migrations.ts`                                                                | `migrations.test.ts` (5)                                                              | real SQLite files             |
-| Integration | `src/persistence/*`                                                                | one sibling test per repo (25)                                                        | real SQLite, `db.ts` readers  |
+| Integration | `src/migrations.ts`                                                                | `migrations.test.ts` (7)                                                              | real SQLite files             |
+| Integration | `src/persistence/*`                                                                | one sibling test per repo (35)                                                        | real SQLite, `db.ts` readers  |
 | Unit        | `src/config.ts`                                                                    | `config.test.ts` (10): `loadConfig`, secrets check                                    | —                             |
 | Contract    | frozen import paths (plan §2)                                                      | `src/public-surface.test.ts` (15)                                                     | —                             |
 | Integration | `src/{auth,seed}.ts`                                                               | sibling tests                                                                         | —                             |

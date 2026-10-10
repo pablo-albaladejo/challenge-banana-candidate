@@ -1,26 +1,30 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { faker } from '@faker-js/faker';
-import { transition } from './intents';
+import { IllegalTransitionError, transition } from './intents';
 import { persistIntent, intentRowOf } from '../../tests/fixtures/factories';
 import { events, intentRow } from '../../tests/support/db';
 
 describe('transition', () => {
-  it('should write the status even when the edge is outside the table', () => {
+  it('should reject an edge outside the table and keep the stored status', () => {
     // Arrange
     const intent = persistIntent({ status: 'completed' });
-    // Act
-    transition(intent.id, 'processing');
-    // Assert
-    assert.equal(intentRow(intent.id)!.status, 'processing');
+    // Act & Assert
+    assert.throws(() => transition(intent.id, 'processing'), IllegalTransitionError);
+    assert.deepEqual(intentRow(intent.id), intentRowOf(intent));
   });
-  it('should report legal=false for completed→processing', () => {
+  it('should name both statuses when it rejects completed→processing', () => {
     // Arrange
     const intent = persistIntent({ status: 'completed' });
-    // Act
-    const result = transition(intent.id, 'processing');
-    // Assert
-    assert.deepEqual(result, { changed: true, legal: false });
+    // Act & Assert
+    assert.throws(
+      () => transition(intent.id, 'processing'),
+      (e) => {
+        assert.ok(e instanceof IllegalTransitionError);
+        assert.deepEqual({ from: e.from, to: e.to }, { from: 'completed', to: 'processing' });
+        return true;
+      },
+    );
   });
   it('should report legal=true for requires_confirmation→processing', () => {
     // Arrange

@@ -16,6 +16,8 @@ const actionSchema = z.object({
   arguments: z.unknown(),
   conversationId: z.string().nullable().optional(),
   intentId: z.string().max(150).optional(),
+  /** The customer's "send anyway": the pending intent a matching transfer may be proposed past. */
+  overridePendingIntentId: z.string().max(150).optional(),
 });
 /** The role is checked before the body, so an operator never reaches validation or a tool. */
 export const runAction: Handler = async ({ request, actor }) => {
@@ -27,6 +29,7 @@ export const runAction: Handler = async ({ request, actor }) => {
     conversationId: body.conversationId || null,
     runId: randomUUID(),
     intentId: body.intentId || randomUUID(),
+    overridePendingIntentId: body.overridePendingIntentId,
   };
   return json(await runTool(body.name, body.arguments, ctx));
 };

@@ -16,12 +16,19 @@ import {
   stopBank,
 } from '../../../tests/support/bank';
 import { reply, startFakeOpenAI, type FakeOpenAI } from '../../../tests/support/openai';
-import { searchResultFactory, transferInputFactory } from '../../../tests/fixtures/factories';
+import { startLossyBank } from '../../../tests/support/network';
+import { approvalsFor, intentRow } from '../../../tests/support/db';
+import {
+  persistIntent,
+  searchResultFactory,
+  transferInputFactory,
+} from '../../../tests/fixtures/factories';
 import {
   accounts,
   conversations,
   counts,
   customers,
+  historicTransfer,
   operators,
   unknown,
 } from '../../../tests/fixtures/world';
@@ -276,6 +283,101 @@ describe('GET /api/dashboard', () => {
     assert.ok(result.body.contacts.length > 0);
     assert.ok(result.body.contacts.every((c: any) => c.userId !== customers.lucia));
     assert.deepEqual(result.body.approvals, []);
+  });
+
+  it('should show a transfer left unknown by lost responses as completed once the bank confirms it', async () => {
+    // Arrange
+    const input = transferInputFactory.build();
+    const network = await startLossyBank(
+      (method, path) => method === 'POST' && path === '/v1/transfers',
+    );
+    let intentId: string;
+    try {
+      const proposal = await api('POST', 'actions', {
+        as: customers.lucia,
+        body: { name: 'transfer_money', arguments: input },
+      });
+      const confirmation = await api('POST', `approvals/${proposal.body.approval.id}/confirm`, {
+        as: customers.lucia,
+      });
+      assert.equal(confirmation.body.status, 'unknown');
+      intentId = confirmation.body.intentId;
+    } finally {
+      await network.close();
+    }
+    // Act
+    const result = await api('GET', 'dashboard', { as: customers.lucia });
+    // Assert
+    const booked = (await bankSnapshot()).operations.find(
+      (o) => o.reference === intentRow(intentId)!.bank_reference,
+    )!;
+    const [pending] = result.body.pendingTransfers;
+    assert.deepEqual(
+      { id: pending.id, status: pending.status, payload: pending.payload },
+      { id: intentId, status: 'completed', payload: input },
+    );
+    assert.equal(pending.operationId, booked.id);
+    assert.equal(intentRow(intentId)!.status, 'completed');
+  });
+
+  it('should keep showing a transfer as unknown while the bank cannot confirm it', async () => {
+    // Arrange
+    const intent = persistIntent({
+      status: 'unknown',
+      bankReference: `ref-${faker.string.uuid()}`,
+    });
+    const network = await startLossyBank(
+      (method, path) => method === 'GET' && path.startsWith('/v1/operations/'),
+    );
+    // Act
+    let result;
+    try {
+      result = await api('GET', 'dashboard', { as: customers.lucia });
+    } finally {
+      await network.close();
+    }
+    // Assert
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body.pendingTransfers, [
+      { id: intent.id, status: 'unknown', payload: intent.payload, createdAt: intent.createdAt },
+    ]);
+  });
+
+  it('should show a recent failed transfer as completed once the bank has its operation', async () => {
+    // Arrange
+    const intent = persistIntent({
+      status: 'failed',
+      bankReference: historicTransfer.reference,
+      payload: historicTransfer.payload,
+      error: 'No response received from the bank.',
+    });
+    // Act
+    const result = await api('GET', 'dashboard', { as: customers.lucia });
+    // Assert
+    const shown = result.body.pendingTransfers.find((p: any) => p.id === intent.id);
+    assert.deepEqual(
+      { status: shown?.status, operationId: shown?.operationId },
+      { status: 'completed', operationId: historicTransfer.operationId },
+    );
+  });
+
+  it('should list only the ten newest pending transfers of the session customer', async () => {
+    // Arrange
+    const at = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000).toISOString();
+    const intents = Array.from({ length: 11 }, (_, i) =>
+      persistIntent({ status: 'processing', createdAt: at(11 - i) }),
+    );
+    persistIntent({ userId: customers.bruno, status: 'processing' });
+    // Act
+    const result = await api('GET', 'dashboard', { as: customers.lucia });
+    // Assert
+    assert.deepEqual(
+      result.body.pendingTransfers.map((p: any) => p.id),
+      intents
+        .slice(1)
+        .reverse()
+        .map((i) => i.id),
+    );
   });
 
   it('should give an operator the support cases instead of banking data', async () => {
@@ -571,6 +673,332 @@ describe('POST /api/actions', () => {
     // Assert
     assert.equal(first.body.status, 'open');
     assert.equal(second.body.incidentId, first.body.incidentId);
+  });
+});
+
+describe('POST /api/actions with a matching transfer still unverified', () => {
+  before(startBank);
+  after(stopBank);
+  beforeEach(async () => {
+    seedApp();
+    await resetBank();
+  });
+  const transfer = (input: TransferInput, extra: Record<string, unknown> = {}) =>
+    api('POST', 'actions', {
+      as: customers.lucia,
+      body: { name: 'transfer_money', arguments: input, ...extra },
+    });
+  /** Proposes and confirms the transfer through the UI routes; returns the confirmation body. */
+  const sent = async (input: TransferInput) => {
+    const proposal = await transfer(input);
+    return (
+      await api('POST', `approvals/${proposal.body.approval.id}/confirm`, { as: customers.lucia })
+    ).body;
+  };
+  /** A bank that books transfers but whose answers, and lookups of them, never come back. */
+  const unverifiable = () =>
+    startLossyBank(
+      (method, path) =>
+        (method === 'POST' && path === '/v1/transfers') ||
+        (method === 'GET' && path.startsWith('/v1/operations/')),
+    );
+
+  it('should hold an identical transfer for review instead of proposing it again', async () => {
+    // Arrange
+    const input = transferInputFactory.build();
+    const network = await unverifiable();
+    let first, second;
+    try {
+      first = await sent(input);
+      // Act
+      second = await transfer(input);
+    } finally {
+      await network.close();
+    }
+    // Assert
+    assert.equal(first.status, 'unknown');
+    assert.equal(second.status, 200);
+    assert.deepEqual(
+      {
+        status: second.body.status,
+        pendingIntentId: second.body.pendingIntentId,
+        error: second.body.error,
+      },
+      {
+        status: 'requires_review',
+        pendingIntentId: first.intentId,
+        error: 'A matching transfer is still being verified with the bank.',
+      },
+    );
+    assert.equal(second.body.approval, undefined);
+    assert.equal(approvalsFor(second.body.intentId), 0);
+    const booked = (await operationsFor(customers.lucia)).filter(
+      (o) => o.amountCents === input.amountCents && o.toAccountId === input.toAccountId,
+    );
+    assert.equal(booked.length, 1);
+  });
+
+  it('should propose the identical transfer when the customer sends it anyway', async () => {
+    // Arrange
+    const input = transferInputFactory.build();
+    const network = await unverifiable();
+    let result, held;
+    try {
+      const first = await sent(input);
+      held = await transfer(input);
+      // Act
+      result = await transfer(input, {
+        intentId: held.body.intentId,
+        overridePendingIntentId: first.intentId,
+      });
+    } finally {
+      await network.close();
+    }
+    // Assert
+    assert.equal(result.body.status, 'requires_confirmation');
+    assert.deepEqual(result.body.approval.payload, input);
+    assert.equal(result.body.intentId, held.body.intentId);
+    assert.equal(approvalsFor(held.body.intentId), 1);
+  });
+
+  it('should ignore an override naming another customer pending transfer', async () => {
+    // Arrange
+    const input = transferInputFactory.build();
+    const foreign = persistIntent({
+      userId: customers.bruno,
+      status: 'unknown',
+      payload: transferInputFactory.build({
+        fromAccountId: accounts.bruno,
+        toAccountId: accounts.lucia,
+      }),
+    });
+    const network = await unverifiable();
+    let first, result;
+    try {
+      first = await sent(input);
+      // Act
+      result = await transfer(input, { overridePendingIntentId: foreign.id });
+    } finally {
+      await network.close();
+    }
+    // Assert
+    assert.equal(result.body.status, 'requires_review');
+    assert.equal(result.body.pendingIntentId, first.intentId);
+    assert.equal(approvalsFor(result.body.intentId), 0);
+  });
+
+  it('should ignore an override naming a transfer that is not the pending one', async () => {
+    // Arrange
+    const input = transferInputFactory.build();
+    const settled = await sent(transferInputFactory.build());
+    const network = await unverifiable();
+    let first, result;
+    try {
+      first = await sent(input);
+      // Act
+      result = await transfer(input, { overridePendingIntentId: settled.intentId });
+    } finally {
+      await network.close();
+    }
+    // Assert
+    assert.equal(settled.status, 'completed');
+    assert.equal(result.body.status, 'requires_review');
+    assert.equal(result.body.pendingIntentId, first.intentId);
+  });
+
+  it('should propose an identical transfer without friction once the first one completed', async () => {
+    // Arrange
+    const input = transferInputFactory.build();
+    const first = await sent(input);
+    // Act
+    const second = await transfer(input);
+    // Assert
+    assert.equal(first.status, 'completed');
+    assert.equal(second.body.status, 'requires_confirmation');
+  });
+
+  it('should propose an identical transfer once the bank confirms the earlier unknown one', async () => {
+    // Arrange
+    const input = transferInputFactory.build();
+    const network = await startLossyBank(
+      (method, path) => method === 'POST' && path === '/v1/transfers',
+    );
+    let first;
+    try {
+      first = await sent(input);
+    } finally {
+      await network.close();
+    }
+    // Act
+    const second = await transfer(input);
+    // Assert
+    assert.equal(first.status, 'unknown');
+    assert.equal(second.body.status, 'requires_confirmation');
+    assert.equal(intentRow(first.intentId)!.status, 'completed');
+  });
+
+  /** Two live proposals of the same transfer under different intents, as two tabs would make. */
+  const twoProposals = async (input: TransferInput) => {
+    const a = (await transfer(input)).body;
+    const b = (await transfer(input)).body;
+    return { a, b };
+  };
+  const confirm = (approvalId: string, body?: Record<string, unknown>) =>
+    api('POST', `approvals/${approvalId}/confirm`, { as: customers.lucia, body });
+  const matching = async (input: TransferInput) =>
+    (await operationsFor(customers.lucia)).filter(
+      (o) => o.amountCents === input.amountCents && o.toAccountId === input.toAccountId,
+    ).length;
+
+  it('should hold the confirmation of an identical proposal while the first is still unverified', async () => {
+    // Arrange
+    const input = transferInputFactory.build();
+    const { a, b } = await twoProposals(input);
+    const network = await unverifiable();
+    let first, second;
+    try {
+      first = await confirm(a.approval.id);
+      // Act
+      second = await confirm(b.approval.id);
+    } finally {
+      await network.close();
+    }
+    // Assert
+    assert.equal(first.body.status, 'unknown');
+    assert.deepEqual(
+      { status: second.body.status, pendingIntentId: second.body.pendingIntentId },
+      { status: 'requires_review', pendingIntentId: a.intentId },
+    );
+    assert.equal(await matching(input), 1);
+  });
+
+  it('should confirm the identical proposal when the customer sends it anyway', async () => {
+    // Arrange
+    const input = transferInputFactory.build();
+    const { a, b } = await twoProposals(input);
+    const network = await unverifiable();
+    let result;
+    try {
+      await confirm(a.approval.id);
+      await confirm(b.approval.id);
+      // Act
+      result = await confirm(b.approval.id, { overridePendingIntentId: a.intentId });
+    } finally {
+      await network.close();
+    }
+    // Assert
+    assert.notEqual(result.body.status, 'requires_review');
+    assert.equal(await matching(input), 2);
+  });
+
+  it('should hold the confirmation of an identical proposal while the first is still being sent', async () => {
+    // Arrange
+    const input = transferInputFactory.build();
+    const { a, b } = await twoProposals(input);
+    const network = await startLossyBank(
+      (method, path) => method === 'POST' && path === '/v1/transfers',
+      'hang',
+    );
+    let first, second;
+    try {
+      first = confirm(a.approval.id);
+      const deadline = Date.now() + 5000;
+      while (network.lost === 0 && Date.now() < deadline)
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      // Act
+      second = await confirm(b.approval.id);
+    } finally {
+      network.release();
+      await first?.catch(() => {});
+      await network.close();
+    }
+    // Assert
+    assert.deepEqual(
+      { status: second.body.status, pendingIntentId: second.body.pendingIntentId },
+      { status: 'requires_review', pendingIntentId: a.intentId },
+    );
+    assert.equal((await first).body.status, 'completed');
+    assert.equal(await matching(input), 1);
+  });
+
+  it('should dispatch only one of two identical proposals confirmed at the same time', async () => {
+    // Arrange
+    const input = transferInputFactory.build();
+    const unverified = persistIntent({
+      status: 'unknown',
+      payload: input,
+      bankReference: `ref-${faker.string.uuid()}`,
+    });
+    const override = { overridePendingIntentId: unverified.id };
+    const a = (await transfer(input, override)).body;
+    const b = (await transfer(input, override)).body;
+    // Both confirmations wait on the bank check of the older twin, then race for the dispatch.
+    const network = await startLossyBank(
+      (method, path) => method === 'GET' && path.startsWith('/v1/operations/'),
+      'hang',
+    );
+    let results, both;
+    try {
+      both = Promise.all([confirm(a.approval.id, override), confirm(b.approval.id, override)]);
+      const deadline = Date.now() + 5000;
+      while (network.lost < 2 && Date.now() < deadline)
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      network.release();
+      // Act
+      results = (await both).map((r) => r.body);
+    } finally {
+      await network.close();
+      await both?.catch(() => {});
+    }
+    // Assert
+    const sentOne = results.find((r) => r.status !== 'requires_review');
+    const heldOne = results.find((r) => r.status === 'requires_review');
+    assert.equal(a.status, 'requires_confirmation');
+    assert.equal(b.status, 'requires_confirmation');
+    assert.equal(sentOne?.status, 'completed');
+    assert.equal(heldOne?.pendingIntentId, sentOne?.intentId);
+    assert.equal(await matching(input), 1);
+  });
+
+  it('should answer the stored outcome to a re-proposal that a confirmation overtook', async () => {
+    // Arrange
+    const input = transferInputFactory.build();
+    const unverified = persistIntent({
+      status: 'unknown',
+      payload: input,
+      bankReference: `ref-${faker.string.uuid()}`,
+    });
+    const override = { overridePendingIntentId: unverified.id };
+    const proposal = (await transfer(input, override)).body;
+    // Only the first bank check of the older twin hangs: the re-proposal's.
+    let checks = 0;
+    const network = await startLossyBank(
+      (method, path) => method === 'GET' && path.startsWith('/v1/operations/') && checks++ === 0,
+      'hang',
+    );
+    let reproposal, confirmed, pending;
+    try {
+      pending = transfer(input, { intentId: proposal.intentId, ...override });
+      const deadline = Date.now() + 5000;
+      while (network.lost === 0 && Date.now() < deadline)
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      confirmed = (await confirm(proposal.approval.id, override)).body;
+      network.release();
+      // Act
+      reproposal = await pending;
+    } finally {
+      await network.close();
+      await pending?.catch(() => {});
+    }
+    // Assert
+    assert.equal(confirmed.status, 'completed');
+    assert.equal(reproposal.status, 200);
+    assert.deepEqual(
+      { status: reproposal.body.status, replay: reproposal.body.replay },
+      { status: 'completed', replay: true },
+    );
+    assert.equal(approvalsFor(proposal.intentId), 1);
+    assert.equal(await matching(input), 1);
   });
 });
 

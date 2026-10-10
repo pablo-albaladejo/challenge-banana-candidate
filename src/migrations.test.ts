@@ -110,6 +110,33 @@ describe('migrate', () => {
     assert.deepEqual(db.prepare('SELECT * FROM conversations').all(), before.conversations);
     assert.deepEqual(db.prepare('SELECT * FROM messages').all(), before.messages);
   });
+  it('should add the dispatch time to the intents of an upgraded database without losing them', () => {
+    // Arrange
+    const db = open();
+    db.exec(legacySchema);
+    db.prepare(
+      'INSERT INTO intents(id,user_id,conversation_id,run_id,payload,status,bank_reference,operation_id,error,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',
+    ).run(
+      `intent-${faker.string.uuid()}`,
+      customers.lucia,
+      null,
+      null,
+      '{}',
+      'unknown',
+      `ref-${faker.string.uuid()}`,
+      null,
+      faker.lorem.sentence(),
+      new Date().toISOString(),
+    );
+    const before = db.prepare('SELECT * FROM intents').all() as Record<string, unknown>[];
+    // Act
+    migrate(db);
+    // Assert
+    assert.deepEqual(
+      db.prepare('SELECT * FROM intents').all(),
+      before.map((row) => ({ ...row, dispatched_at: null })),
+    );
+  });
   it('should leave an up-to-date database unchanged when it runs again', () => {
     // Arrange
     let runs = 0;

@@ -1,7 +1,9 @@
 import { after, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { faker } from '@faker-js/faker';
 import { ZodError } from 'zod';
 import { transferMoney } from './actions';
+import { reconcileIntent } from './reconcile';
 import { HttpError } from '../auth';
 import { appDb } from '../db';
 import { config } from '../config';
@@ -14,7 +16,8 @@ import {
   stopBank,
 } from '../../tests/support/bank';
 import { approvalsFor, eventsFor, intentRow } from '../../tests/support/db';
-import { startLossyBank } from '../../tests/support/network';
+import { startLossyBank, type LossyBank } from '../../tests/support/network';
+import { updateIntent } from '../persistence/intents';
 import {
   persistIntent,
   toolContextFactory,
@@ -22,6 +25,13 @@ import {
 } from '../../tests/fixtures/factories';
 import { accounts, customers, money, operators, unknown } from '../../tests/fixtures/world';
 import type { ActionResult, ToolContext } from '../types';
+/** Waits until the `hang` proxy holds a request, so the dispatch is in flight. */
+async function held(network: LossyBank) {
+  const deadline = Date.now() + 5000;
+  while (network.lost === 0 && Date.now() < deadline)
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.ok(network.lost > 0, 'the dispatch never reached the bank proxy');
+}
 /** Proposes the transfer and confirms it, as the customer does through the approval card. */
 async function confirmed(ctx: ToolContext, args: unknown): Promise<ActionResult> {
   const proposal = await transferMoney(ctx, args);
@@ -135,6 +145,20 @@ describe('transferMoney', () => {
     assert.equal(row.bank_reference, operation.reference);
     assert.deepEqual(JSON.parse(row.payload), input);
   });
+  it('should stamp when the dispatch started as the intent enters processing', async () => {
+    // Arrange
+    const input = transferInputFactory.build();
+    const ctx = toolContextFactory.build();
+    const before = new Date().toISOString();
+    // Act
+    await confirmed(ctx, input);
+    // Assert
+    const { dispatched_at, created_at } = intentRow(ctx.intentId)!;
+    assert.ok(
+      dispatched_at && dispatched_at >= before && dispatched_at <= new Date().toISOString(),
+    );
+    assert.ok(dispatched_at >= created_at);
+  });
   it('should record started and completed telemetry events for the run', async () => {
     // Arrange
     const input = transferInputFactory.build();
@@ -223,6 +247,18 @@ describe('transferMoney', () => {
     assert.deepEqual(await bankSnapshot(), before);
     assert.equal(intentRow(ctx.intentId), undefined);
   });
+  it('should reject an override of a pending transfer smuggled into the transfer arguments', async () => {
+    // Arrange
+    const input = transferInputFactory.build();
+    const pending = persistIntent({ status: 'unknown', payload: input });
+    const ctx = toolContextFactory.build();
+    // Act & Assert
+    await assert.rejects(
+      transferMoney(ctx, { ...input, overridePendingIntentId: pending.id }),
+      ZodError,
+    );
+    assert.equal(approvalsFor(ctx.intentId), 0);
+  });
   it('should return the original operation when a completed intent is retried', async () => {
     // Arrange
     const input = transferInputFactory.build();
@@ -302,6 +338,60 @@ describe('transferMoney', () => {
     assert.equal((retry.operation as { id: string }).id, booked.id);
     assert.deepEqual(await bankSnapshot(), before);
   });
+  it('should record a transfer as unknown when the bank reply is an unreadable gateway page', async () => {
+    // Arrange
+    const input = transferInputFactory.build();
+    const ctx = toolContextFactory.build();
+    const proposal = await transferMoney(ctx, input);
+    ctx.approvalId = (proposal.approval as { id: string }).id;
+    const operationsBefore = (await operationsFor(ctx.userId)).length;
+    const network = await startLossyBank(
+      (method, path) => method === 'POST' && path === '/v1/transfers',
+      'html-502',
+    );
+    // Act
+    let result: ActionResult;
+    try {
+      result = await transferMoney(ctx, input);
+    } finally {
+      await network.close();
+    }
+    // Assert
+    assert.equal(result.status, 'unknown');
+    assert.equal(
+      result.error,
+      'The bank did not confirm this transfer. It will be checked with the bank before any retry.',
+    );
+    assert.equal(intentRow(ctx.intentId)!.status, 'unknown');
+    assert.equal((await operationsFor(ctx.userId)).length, operationsBefore + 1);
+  });
+  it('should reconcile an unreadable bank reply to the completed operation the bank booked', async () => {
+    // Arrange
+    const input = transferInputFactory.build();
+    const ctx = toolContextFactory.build();
+    const proposal = await transferMoney(ctx, input);
+    ctx.approvalId = (proposal.approval as { id: string }).id;
+    const network = await startLossyBank(
+      (method, path) => method === 'POST' && path === '/v1/transfers',
+      'html-502',
+    );
+    try {
+      await transferMoney(ctx, input);
+    } finally {
+      await network.close();
+    }
+    // Act
+    await reconcileIntent(ctx.userId, ctx.intentId);
+    // Assert
+    const row = intentRow(ctx.intentId)!;
+    const booked = (await bankSnapshot()).operations.find(
+      (o) => o.reference === row.bank_reference,
+    )!;
+    assert.deepEqual(
+      { status: row.status, operation_id: row.operation_id, error: row.error },
+      { status: 'completed', operation_id: booked.id, error: null },
+    );
+  });
   it('should reject reusing an intent with a different payload as a 409 conflict', async () => {
     // Arrange
     const input = transferInputFactory.build();
@@ -369,7 +459,7 @@ describe('transferMoney', () => {
     const kinds = eventsFor(ctx.runId).map((e) => e.kind);
     assert.deepEqual(kinds, ['transfer.started', 'transfer.failed']);
   });
-  it('should create a proposal when a processing intent is proposed again with the same intent id', async () => {
+  it('should reject re-proposing an intent whose transfer is already being sent with a 409', async () => {
     // Arrange
     const input = transferInputFactory.build();
     const ctx = toolContextFactory.build();
@@ -381,11 +471,80 @@ describe('transferMoney', () => {
       status: 'processing',
       bankReference: `ref-${ctx.intentId}`,
     });
-    // Act
-    const result = await transferMoney(ctx, input);
+    // Act & Assert
+    await assert.rejects(transferMoney(ctx, input), (e) => {
+      assert.ok(e instanceof HttpError);
+      assert.equal(e.status, 409);
+      assert.equal(e.message, 'This transfer is already being sent.');
+      return true;
+    });
+    assert.equal(intentRow(ctx.intentId)!.status, 'processing');
+    assert.equal(approvalsFor(ctx.intentId), 0);
+  });
+  it('should reject a re-proposal while the dispatch is in flight and still complete the transfer', async () => {
+    // Arrange
+    const input = transferInputFactory.build();
+    const ctx = toolContextFactory.build();
+    const proposal = await transferMoney(ctx, input);
+    const confirmation = { ...ctx, approvalId: (proposal.approval as { id: string }).id };
+    const network = await startLossyBank(
+      (method, path) => method === 'POST' && path === '/v1/transfers',
+      'hang',
+    );
+    let dispatch: Promise<ActionResult> | undefined;
+    let reproposal: unknown;
+    try {
+      dispatch = transferMoney(confirmation, input);
+      await held(network);
+      // Act
+      reproposal = await transferMoney(ctx, input).catch((e) => e);
+      network.release();
+      await dispatch;
+    } finally {
+      network.release();
+      await dispatch?.catch(() => {});
+      await network.close();
+    }
     // Assert
-    assert.equal(result.status, 'requires_confirmation');
-    assert.equal(intentRow(ctx.intentId)!.status, 'requires_confirmation');
-    assert.equal(approvalsFor(ctx.intentId), 1);
+    assert.ok(reproposal instanceof HttpError);
+    assert.equal(reproposal.status, 409);
+    const row = intentRow(ctx.intentId)!;
+    const booked = (await bankSnapshot()).operations.find(
+      (o) => o.reference === row.bank_reference,
+    )!;
+    assert.deepEqual(
+      { status: row.status, operation_id: row.operation_id },
+      { status: 'completed', operation_id: booked.id },
+    );
+  });
+  it('should answer with the stored outcome when another writer settled the intent during the dispatch', async () => {
+    // Arrange
+    const input = transferInputFactory.build();
+    const ctx = toolContextFactory.build();
+    const proposal = await transferMoney(ctx, input);
+    ctx.approvalId = (proposal.approval as { id: string }).id;
+    const settledId = `op-${faker.string.uuid()}`;
+    const network = await startLossyBank(
+      (method, path) => method === 'POST' && path === '/v1/transfers',
+      'hang',
+    );
+    let dispatch: Promise<ActionResult> | undefined;
+    let result: ActionResult;
+    try {
+      dispatch = transferMoney(ctx, input);
+      await held(network);
+      updateIntent(ctx.intentId, { status: 'completed', operation_id: settledId });
+      network.release();
+      // Act
+      result = await dispatch;
+    } finally {
+      network.release();
+      await dispatch?.catch(() => {});
+      await network.close();
+    }
+    // Assert
+    assert.equal(result.status, 'completed');
+    assert.equal((result.operation as { id: string }).id, settledId);
+    assert.equal(intentRow(ctx.intentId)!.operation_id, settledId);
   });
 });

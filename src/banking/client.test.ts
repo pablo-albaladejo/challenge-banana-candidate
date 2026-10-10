@@ -3,10 +3,27 @@ import assert from 'node:assert/strict';
 import { bankRequest, BankError } from './client';
 import { config } from '../config';
 import { resetBank, startBank, stopBank } from '../../tests/support/bank';
+import { startLossyBank, type NetworkFault } from '../../tests/support/network';
 import { faker } from '@faker-js/faker';
 import { transferInputFactory } from '../../tests/fixtures/factories';
 import { accounts, customers } from '../../tests/fixtures/world';
 import type { Account } from '../types';
+/** Reads the actor's accounts through a proxy that spoils the bank's answer with `fault`. */
+async function accountsThrough(fault: NetworkFault) {
+  const network = await startLossyBank((method, path) => path === '/v1/accounts', fault);
+  try {
+    return await bankRequest<Account[]>(customers.lucia, '/v1/accounts');
+  } finally {
+    await network.close();
+  }
+}
+/** The error an unverified, unreadable bank answer must surface as. */
+const unreadable = (e: unknown) => {
+  assert.ok(e instanceof BankError);
+  assert.equal(e.status, 502);
+  assert.equal(e.message, 'Unreadable bank response.');
+  return true;
+};
 describe('bankRequest', () => {
   before(startBank);
   after(stopBank);
@@ -53,5 +70,23 @@ describe('bankRequest', () => {
     } finally {
       config.bankUrl = original;
     }
+  });
+  it('should report an HTML gateway error page as an unverified 502 BankError', async () => {
+    // Arrange
+    const fault: NetworkFault = 'html-502';
+    // Act & Assert
+    await assert.rejects(accountsThrough(fault), unreadable);
+  });
+  it('should report an empty bank body as an unverified 502 BankError', async () => {
+    // Arrange
+    const fault: NetworkFault = 'empty';
+    // Act & Assert
+    await assert.rejects(accountsThrough(fault), unreadable);
+  });
+  it('should report a body cut off while streaming as an unverified 502 BankError', async () => {
+    // Arrange
+    const fault: NetworkFault = 'truncated';
+    // Act & Assert
+    await assert.rejects(accountsThrough(fault), unreadable);
   });
 });

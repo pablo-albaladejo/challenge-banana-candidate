@@ -64,6 +64,8 @@ export type Intent = {
   operationId: string | null;
   error: string | null;
   createdAt: string;
+  /** When the intent entered `processing`; null until then (and on rows older than migration 2). */
+  dispatchedAt: string | null;
 };
 
 export const intentFactory = new Factory<Intent>()
@@ -76,7 +78,8 @@ export const intentFactory = new Factory<Intent>()
   .attr('bankReference', null)
   .attr('operationId', null)
   .attr('error', null)
-  .attr('createdAt', () => new Date().toISOString());
+  .attr('createdAt', () => new Date().toISOString())
+  .attr('dispatchedAt', null);
 
 /** The intent as the repository stores it: the payload serialised to JSON. */
 export const storedIntent = (intent: Intent): NewIntent => ({
@@ -96,6 +99,7 @@ export const intentRowOf = (intent: Intent): IntentRow => ({
   operation_id: intent.operationId,
   error: intent.error,
   created_at: intent.createdAt,
+  dispatched_at: intent.dispatchedAt,
 });
 
 /** Builds an intent and stores it, as transferMoney does before it dispatches to the bank. */

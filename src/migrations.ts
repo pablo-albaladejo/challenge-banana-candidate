@@ -21,6 +21,9 @@ export const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS incidents_user ON incidents(user_id);
       CREATE INDEX IF NOT EXISTS events_conversation ON events(conversation_id,created_at);
     `),
+  // 2: when an intent entered `processing`, so reconcile measures staleness from the dispatch start
+  // instead of the proposal. Nullable: existing rows fall back to `created_at`.
+  (db) => db.exec('ALTER TABLE intents ADD COLUMN dispatched_at TEXT'),
 ];
 /**
  * Applies the pending migrations in order, each in its own IMMEDIATE transaction that re-reads
