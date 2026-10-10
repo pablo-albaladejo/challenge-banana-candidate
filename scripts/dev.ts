@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { config } from '../src/config';
+import { config } from '../src/platform/config';
 const production = process.argv.includes('--production');
 fs.mkdirSync(config.dataDir, { recursive: true });
 const marker = path.join(config.dataDir, 'app-running.pid');

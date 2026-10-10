@@ -1,4 +1,4 @@
-import { config } from '../src/config';
+import { config } from '../src/platform/config';
 import { profiles } from '../simulator/bank';
 const profile = process.argv[2] || 'normal';
 if (!profiles.includes(profile as any)) {

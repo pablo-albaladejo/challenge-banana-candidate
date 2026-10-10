@@ -1,5 +1,7 @@
 # Production readiness review
 
+> File paths in this review predate the Phase 6 folder move; the old → new mapping is in [`architecture-decoupling.md` §9](architecture-decoupling.md#9-phase-6--screaming-folders-2026-10-10).
+
 Date: 2026-10-09. Scope: the application side (`app/`, `src/`, `scripts/`, `next.config.ts`, `.env.example`), reviewed against `docs/challenge.md` and `docs/contracts.md`, after the Part 1 bug fixes were merged. `simulator/` is an external dependency and was only read, never changed.
 
 This document merges two independent reviews: an architecture review and a security review (OWASP Top 10 plus LLM-specific risks). Duplicates were merged. **Status: documented, not yet fixed.** The current priority is decoupling the architecture first; these findings are tackled afterwards, one by one, with TDD.

@@ -1,7 +1,7 @@
 // Calls the Next.js catch-all route handler in-process, with a signed session cookie,
 // the same way the browser reaches it. No Next server is needed.
 import { GET, POST } from '../../app/api/[...path]/route';
-import { sessionToken } from '../../src/auth';
+import { sessionToken } from '../../src/identity/auth';
 export type ApiResponse<T = any> = { status: number; body: T; headers: Headers };
 export async function api<T = any>(
   method: 'GET' | 'POST',

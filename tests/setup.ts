@@ -1,6 +1,6 @@
 // Preloaded with --import before every test file. node:test runs each file in its own process,
-// so every file gets isolated databases and its own bank port. src/config.ts reads the environment
-// at import time, which is why this must run before any application module is loaded.
+// so every file gets isolated databases and its own bank port. src/platform/config.ts reads the
+// environment at import time, which is why this must run before any application module is loaded.
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';

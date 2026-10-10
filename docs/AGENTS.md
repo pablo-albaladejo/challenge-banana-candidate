@@ -32,7 +32,7 @@ Authoritative statement of the task (`challenge.md`) and of the observable behav
 | `GET /v1/operations/:reference` | Operation by reference; 404 if absent |
 | `GET /v1/operator/customer?id=` | Operators only |
 
-- **Headers on every `/v1/*`:** `x-bank-actor`, `x-bank-time` (Unix ms, 60 s window), `x-bank-signature` = hex HMAC-SHA256 of `[method, pathWithQuery, actor, timestamp, exactJsonBody].join('\n')` with `BANK_SERVICE_SECRET` (see `src/banking/client.ts`). Actor comes from the server session, never model arguments.
+- **Headers on every `/v1/*`:** `x-bank-actor`, `x-bank-time` (Unix ms, 60 s window), `x-bank-signature` = hex HMAC-SHA256 of `[method, pathWithQuery, actor, timestamp, exactJsonBody].join('\n')` with `BANK_SERVICE_SECRET` (see `src/platform/bank/client.ts`). Actor comes from the server session, never model arguments.
 - **Idempotency:** key = actor + `reference` (1-120 chars). Same payload replays with `replay:true`; different payload returns 409. The app decides which requests are the same intent.
 - **Errors:** 400 invalid input, 401 invalid context, 403 ownership/role, 404 absent, 409 conflict, 422 insufficient funds, 503 unavailable, 504 upstream timeout. 503/504 do not establish whether the transfer committed.
 - **Scenarios** (`npm run scenario -- <profile> [seed]`): `normal`, `intermittent` (default, seed 17, third new op loses its response after commit), `reject-before`, `lost-response`, `slow-response`, `read-unavailable`. Admin API (`/admin/*`, Bearer `BANK_ADMIN_SECRET`) is for local testing only; the app must not use it to complete or inspect operations.
@@ -47,7 +47,7 @@ Authoritative statement of the task (`challenge.md`) and of the observable behav
 
 ### Testing Requirements
 - Reproduce each scenario profile against a running bank before claiming an idempotency or status fix.
-- Verify contract claims against `src/banking/client.ts` and `simulator/` when editing docs.
+- Verify contract claims against `src/platform/bank/client.ts` and `simulator/` when editing docs.
 
 ### Common Patterns
 - Refer to contract rules by section name (Business behavior, External bank boundary, Reproducible scenarios) in notes and commits.
@@ -55,7 +55,7 @@ Authoritative statement of the task (`challenge.md`) and of the observable behav
 ## Dependencies
 
 ### Internal
-- `src/banking/client.ts`, `src/types.ts` (`SearchResult`), `simulator/`, `app/` API routes, `submission/README.md`
+- `src/platform/bank/client.ts`, `src/types.ts` (`SearchResult`), `simulator/`, `app/` API routes, `submission/README.md`
 
 ### External
 - None

@@ -32,16 +32,16 @@ Banana Bank technical challenge starter: a fictional bank's AI assistant built o
 
 ## Subdirectories
 
-| Directory     | Purpose                                                                                                 |
-| ------------- | ------------------------------------------------------------------------------------------------------- |
-| `app/`        | Next.js web UI and catch-all API route (see `app/AGENTS.md`)                                            |
-| `src/`        | Application core: agent, banking integration, retrieval, ingestion, operator view (see `src/AGENTS.md`) |
-| `simulator/`  | External bank simulator and ledger — a test dependency, not the product (see `simulator/AGENTS.md`)     |
-| `scripts/`    | CLI entrypoints for setup, dev, reset, ingest, scenarios, doctor (see `scripts/AGENTS.md`)              |
-| `tests/`      | Shared test harness only; tests are colocated with source (see `tests/AGENTS.md`)                       |
-| `fixtures/`   | Document corpus, seed conversations, portable embedding index (see `fixtures/AGENTS.md`)                |
-| `docs/`       | Challenge brief and bank API contract (see `docs/AGENTS.md`)                                            |
-| `submission/` | Candidate submission materials (see `submission/AGENTS.md`)                                             |
+| Directory     | Purpose                                                                                                                                                            |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `app/`        | Next.js web UI and catch-all API route (see `app/AGENTS.md`)                                                                                                       |
+| `src/`        | Application core, one folder per feature (transfers, accounts, assistant, conversations, knowledge, support, identity) on top of `platform/` (see `src/AGENTS.md`) |
+| `simulator/`  | External bank simulator and ledger — a test dependency, not the product (see `simulator/AGENTS.md`)                                                                |
+| `scripts/`    | CLI entrypoints for setup, dev, reset, ingest, scenarios, doctor (see `scripts/AGENTS.md`)                                                                         |
+| `tests/`      | Shared test harness only; tests are colocated with source (see `tests/AGENTS.md`)                                                                                  |
+| `fixtures/`   | Document corpus, seed conversations, portable embedding index (see `fixtures/AGENTS.md`)                                                                           |
+| `docs/`       | Challenge brief and bank API contract (see `docs/AGENTS.md`)                                                                                                       |
+| `submission/` | Candidate submission materials (see `submission/AGENTS.md`)                                                                                                        |
 
 ## For AI Agents
 

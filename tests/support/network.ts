@@ -4,7 +4,7 @@
 // the application sees a genuine transport fault.
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { config } from '../../src/config';
+import { config } from '../../src/platform/config';
 export type LossyBank = {
   /** How many responses the fault selected (for `hang`: how many requests it is holding or held). */
   lost: number;

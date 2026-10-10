@@ -1,17 +1,17 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import type { Person } from '../src/types';
-import { Alerts } from './_ui/Alerts';
-import { api, type AnyRecord } from './_ui/api';
-import { ApprovalsPanel } from './_ui/ApprovalsPanel';
-import { ChatPanel } from './_ui/ChatPanel';
-import { CustomerOverview } from './_ui/CustomerOverview';
-import { DocumentsView } from './_ui/DocumentsView';
-import { OperatorCases } from './_ui/OperatorCases';
-import { Sidebar } from './_ui/Sidebar';
-import { Topbar } from './_ui/Topbar';
-import { TransferChecksPanel } from './_ui/TransferChecksPanel';
-import { TransferForm } from './_ui/TransferForm';
+import { Alerts } from './_ui/shell/Alerts';
+import { api, type AnyRecord } from './_ui/lib/api';
+import { ApprovalsPanel } from './_ui/transfers/ApprovalsPanel';
+import { ChatPanel } from './_ui/assistant/ChatPanel';
+import { CustomerOverview } from './_ui/accounts/CustomerOverview';
+import { DocumentsView } from './_ui/knowledge/DocumentsView';
+import { OperatorCases } from './_ui/support/OperatorCases';
+import { Sidebar } from './_ui/shell/Sidebar';
+import { Topbar } from './_ui/shell/Topbar';
+import { TransferChecksPanel } from './_ui/transfers/TransferChecksPanel';
+import { TransferForm } from './_ui/transfers/TransferForm';
 export default function Home() {
   const [people, setPeople] = useState<Person[]>([]),
     [current, setCurrent] = useState<Person | null>(null),

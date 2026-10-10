@@ -12,35 +12,15 @@ Next.js App Router root for the Banana Bank demo. Holds the root layout, the sin
 | File          | Description                                                                                                                                                                                                           |
 | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `layout.tsx`  | Server component. Root `<html lang="en"><body>`, imports `./globals.css`, exports `metadata` (title "Banana Bank", simulated-environment description). No providers.                                                  |
-| `page.tsx`    | ~400-line `'use client'` component `Home`: state, effects, handlers and composition only. Markup lives in `_ui/` panels; it talks to `/api/*` only through `_ui/api.ts`.                                              |
+| `page.tsx`    | ~400-line `'use client'` component `Home`: state, effects, handlers and composition only. Markup lives in `_ui/` panels; it talks to `/api/*` only through `_ui/lib/api.ts`.                                          |
 | `globals.css` | ~1390 lines of plain CSS, no modules/Tailwind. Design tokens in `:root` (`--ink`, `--paper`, `--forest`, `--lime`, ...); class-name styling (`app-shell`, `sidebar`, `account-card`, `chat-panel`, `case-list`, ...). |
 
 ## Subdirectories
 
-| Directory        | Purpose                                                                                                               |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `api/[...path]/` | Catch-all route handler; its `route.ts` only re-exports `handle` from `src/http/` as `GET`/`POST` (see its AGENTS.md) |
-| `_ui/`           | Private folder (not routed): presentational panels of `page.tsx`, the `api()` helper and the formatters               |
-
-### `_ui/`
-
-Presentational components: props in, callbacks out. No hooks, no fetching, no state. They carry no `'use client'` of their own: `page.tsx` is the one client boundary and they run in its module graph, so import them only from client code. Class names, text and DOM order are the ones `page.tsx` rendered before the split (`globals.css` styles them by class).
-
-| File                      | Description                                                                                                                         |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `api.ts`                  | `api(path, body?)`: GET without body, POST with JSON, `cache: 'no-store'`, throws `result.error`; the `AnyRecord` type              |
-| `format.ts`               | `money(cents)` (EUR, `en-IE`) and `date(iso)` (day, short month, 24-hour time); unit-tested by `format.test.ts`                     |
-| `Icon.tsx`                | Inline SVG icon set (`overview`, `chat`, `transfer`, `document`, `arrow`, `help`, `clock`)                                          |
-| `Sidebar.tsx`             | Brand, the role's nav (`onNavigate`), customer conversation list and "New conversation"                                             |
-| `Topbar.tsx`              | Breadcrumb and the "Switch person" persona picker (`onSelectPerson`)                                                                |
-| `Alerts.tsx`              | Error banner (`role=alert`) and notice (`role=status`) with "Send anyway" for a held transfer and "Dismiss notice"                  |
-| `CustomerOverview.tsx`    | Customer Overview tab: greeting, account cards, last 7 movements, shortcuts (`onTab`)                                               |
-| `ChatPanel.tsx`           | Assistant tab: conversation picker, bubbles with `**bold**`, suggestions, composer; `endRef` is the scroll anchor `Home` scrolls to |
-| `TransferForm.tsx`        | Transfers tab: controlled from/recipient/amount/description form (`onSubmit`) and the side note                                     |
-| `ApprovalsPanel.tsx`      | "Proposals awaiting confirmation" (`onConfirm`)                                                                                     |
-| `TransferChecksPanel.tsx` | "Recent transfer checks" (`role=status`, `aria-live=polite`)                                                                        |
-| `OperatorCases.tsx`       | Operator Cases tab: open-case count, inbox (`onOpenCase`) and case detail                                                           |
-| `DocumentsView.tsx`       | Documents tab: "Update index" (operators), search form and excerpts, document list and reader                                       |
+| Directory        | Purpose                                                                                                                                                                                                                                    |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `api/[...path]/` | Catch-all route handler; its `route.ts` only re-exports `handle` from `src/server/handle.ts` as `GET`/`POST` (see its AGENTS.md)                                                                                                           |
+| `_ui/`           | Private folder (not routed): presentational panels of `page.tsx` grouped by feature (`shell/`, `transfers/`, `accounts/`, `assistant/`, `knowledge/`, `support/`) and `lib/` (the `api()` helper and the formatters) (see `_ui/AGENTS.md`) |
 
 ## For AI Agents
 
@@ -60,7 +40,7 @@ Presentational components: props in, callbacks out. No hooks, no fetching, no st
 ### Testing Requirements
 
 - `npm run typecheck` (`next typegen && tsc --noEmit`) and `npm run build` (`next build --webpack`) must pass.
-- `npm test` runs colocated `*.test.ts` (see `TESTING.md`): `api/[...path]/route.test.ts` and the unit `_ui/format.test.ts`. Components have no unit tests; `page.e2e.ts` (11 journeys, `npm run test:e2e`) covers them, including a forced generation-guard race on persona switch.
+- `npm test` runs colocated `*.test.ts` (see `TESTING.md`): `api/[...path]/route.test.ts` and the unit `_ui/lib/format.test.ts`. Components have no unit tests; `page.e2e.ts` (11 journeys, `npm run test:e2e`) covers them, including a forced generation-guard race on persona switch.
 - Manual: `npm run dev`, open http://127.0.0.1:3000, switch persona, send a chat message, submit a transfer, confirm a proposal, and (as Marta/Pablo) open a case and run "Update index". Chat and search need `OPENAI_API_KEY` (otherwise API returns 503 `missing_openai_api_key`).
 
 ### Common Patterns

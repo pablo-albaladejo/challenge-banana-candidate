@@ -1,5 +1,5 @@
-import { seedApp } from '../src/seed';
-import { config } from '../src/config';
+import { seedApp } from '../src/server/seed';
+import { config } from '../src/platform/config';
 import { seedBank } from '../simulator/seed';
 import fs from 'node:fs';
 import path from 'node:path';

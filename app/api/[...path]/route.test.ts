@@ -2,10 +2,10 @@ import { after, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { faker } from '@faker-js/faker';
 import { GET, POST } from './route';
-import { seedApp } from '../../../src/seed';
-import { appDb } from '../../../src/db';
-import { sessionToken } from '../../../src/auth';
-import { documents } from '../../../src/ingestion/pipeline';
+import { seedApp } from '../../../src/server/seed';
+import { appDb } from '../../../src/platform/db/db';
+import { sessionToken } from '../../../src/identity/auth';
+import { documents } from '../../../src/knowledge/ingestion/pipeline';
 import { api } from '../../../tests/support/api';
 import {
   balanceOf,
@@ -1304,7 +1304,7 @@ describe('unknown routes', () => {
   });
 });
 
-// Routing semantics of src/http/handle.ts: the order of the origin, session, route and body
+// Routing semantics of src/server/handle.ts: the order of the origin, session, route and body
 // checks; explicit methods (405 with `Allow`, HEAD answered as GET); exact paths only.
 describe('routing order', () => {
   beforeEach(() => seedApp());

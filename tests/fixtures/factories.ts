@@ -4,8 +4,8 @@
 // Assert against the object a factory returned, never against a literal Faker could change.
 import { Factory } from 'rosie';
 import { faker } from '@faker-js/faker';
-import { appDb } from '../../src/db';
-import type { IntentRow, NewIntent } from '../../src/persistence/intents';
+import { appDb } from '../../src/platform/db/db';
+import type { IntentRow, NewIntent } from '../../src/transfers/intents.repo';
 import type {
   Chunk,
   DocumentRecord,
@@ -13,12 +13,12 @@ import type {
   ToolContext,
   TransferInput,
 } from '../../src/types';
-import type { NewConversation } from '../../src/persistence/conversations';
-import type { NewMessage } from '../../src/persistence/messages';
-import type { NewRun } from '../../src/persistence/runs';
-import type { NewApproval } from '../../src/persistence/approvals';
-import type { NewIncident } from '../../src/persistence/incidents';
-import type { NewEvent } from '../../src/persistence/events';
+import type { NewConversation } from '../../src/conversations/conversations.repo';
+import type { NewMessage } from '../../src/conversations/messages.repo';
+import type { NewRun } from '../../src/assistant/runs.repo';
+import type { NewApproval } from '../../src/transfers/approvals.repo';
+import type { NewIncident } from '../../src/support/incidents.repo';
+import type { NewEvent } from '../../src/platform/telemetry/events.repo';
 import { accounts, conversations, customers, money } from './world';
 
 const isoDate = () =>
@@ -105,7 +105,7 @@ export const intentRowOf = (intent: Intent): IntentRow => ({
 /** Builds an intent and stores it, as transferMoney does before it dispatches to the bank. */
 export function persistIntent(attributes: Partial<Intent> = {}): Intent {
   const intent = intentFactory.build(attributes);
-  // Raw SQL on purpose: the harness is an oracle and never calls src/persistence (tests/AGENTS.md).
+  // Raw SQL on purpose: the harness is an oracle and never calls the app repos (tests/AGENTS.md).
   const row = intentRowOf(intent);
   appDb()
     .prepare(
@@ -168,7 +168,7 @@ export const eventDataFactory = new Factory<EventData>()
   )
   .attr('status', () => faker.helpers.arrayElement(['started', 'completed', 'failed']));
 
-// Rows the app repositories store (src/persistence/*), in camelCase. Ids of app-only records are
+// Rows the app repositories store (src/**/*.repo.ts), in camelCase. Ids of app-only records are
 // generated; people and seeded conversations come from world.ts.
 
 /** A new conversation of lucia's, outside the seed. */

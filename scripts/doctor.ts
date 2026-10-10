@@ -1,6 +1,6 @@
-import { embedTexts } from '../src/retrieval/embeddings';
-import { createResponse } from '../src/model/gateway';
-import { config } from '../src/config';
+import { embedTexts } from '../src/knowledge/search/embeddings';
+import { createResponse } from '../src/platform/model/gateway';
+import { config } from '../src/platform/config';
 try {
   const response = await createResponse({
     model: config.chatModel,

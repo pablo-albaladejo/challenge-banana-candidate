@@ -1,8 +1,8 @@
 // Readers of the app database that tests use to assert what the application stored.
 // Rows keep their SQLite column names, so a failing assertion shows exactly what is on disk.
-import { appDb } from '../../src/db';
-import type { IntentRow } from '../../src/persistence/intents';
-import type { EventRow } from '../../src/persistence/events';
+import { appDb } from '../../src/platform/db/db';
+import type { IntentRow } from '../../src/transfers/intents.repo';
+import type { EventRow } from '../../src/platform/telemetry/events.repo';
 
 export type RunRow = {
   user_id: string;

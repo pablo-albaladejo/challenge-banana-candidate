@@ -3,7 +3,7 @@
 // tests must never import simulator/* directly; they talk to this process instead.
 import { spawn, type ChildProcess } from 'node:child_process';
 import net from 'node:net';
-import { config } from '../../src/config';
+import { config } from '../../src/platform/config';
 export type BankProfile =
   | 'normal'
   | 'intermittent'

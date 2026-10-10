@@ -82,12 +82,15 @@ Additional scenarios and contracts are in [contracts.md](docs/contracts.md). Aft
 
 ```text
 app/                   Next.js web interface and API
-src/agent/             Responses loop, instructions, and tools
-src/banking/           Integration, actions, and authorization
-src/ingestion/         Corpus loading and chunking
-src/retrieval/         Embeddings, cache, and SQLite index
-src/operator/          Support case view
-src/telemetry.ts        Activity recording
+src/transfers/         Transfer workflow: intents, approvals, authorization, dispatch, reconcile
+src/accounts/          Customer dashboard and the accounts tool
+src/assistant/         Responses loop, instructions, and the tool registry
+src/conversations/     Conversations and messages
+src/knowledge/         Corpus ingestion, embeddings, SQLite index, and search
+src/support/           Support cases and the operator case view
+src/identity/          People, signed session, and actor
+src/platform/          Config, crypto, app DB, bank client, model gateway, HTTP, telemetry
+src/server/            Composition root: route table, request handler, app seed
 simulator/             External-bank simulator and ledger (test dependency)
 fixtures/              Documents and initial index
 scripts/               Startup, seed, reset, and utilities

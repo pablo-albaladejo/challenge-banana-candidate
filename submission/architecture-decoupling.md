@@ -533,3 +533,28 @@ Resolved since revision 1:
 
 - Moving `route.test.ts` blocks into handler tests is dropped.
 - Phase 5 runs serially after phase 4.
+
+## 9. Phase 6 — screaming folders (2026-10-10)
+
+A pure move/rename refactor: no behaviour change, no logic edits, only import paths, re-export shims, new `index.ts` files, the ESLint boundary rules and docs. Every move used `git mv`.
+
+- **Tree.** `src/` now has one folder per feature, each owning its logic, repos (`*.repo.ts`), agent tools (`tools/*.tool.ts`) and HTTP handlers (`http/`):
+  - `transfers/`: was `banking/{actions→transfer-money,authorization,dispatch,reconcile,intents→intent-lifecycle}`, `persistence/{intents,approvals}` (now `*.repo.ts`), the `transfer_money`/`operation_status` tools and `handlers/{actions,approvals}`.
+  - `accounts/`: `http/dashboard.ts` (was `http/handlers/dashboard.ts`) and the `list_accounts` tool.
+  - `assistant/`: `loop`, `conversation`, `evidence`, `prompt` (was `agent/`), `tool-registry.ts`, `strict-schema.ts` (was `agent/tools/`), `runs.repo.ts`, `http/preview-answer.ts`.
+  - `conversations/`: the two repos, `ownership.ts` (`conversationFor`) and `http/conversations.ts`.
+  - `knowledge/`: `search/` (was `retrieval/`), `ingestion/`, the `search_documents` tool and the `search`/`documents`/`ingestion` handlers.
+  - `support/`: `operator-view.ts` (was `operator/view.ts`), `incidents.repo.ts`, the `request_human` tool, `http/incidents.ts`.
+  - `identity/`: `auth.ts`, `people.ts`, `http/{people,session}.ts`.
+  - `platform/`: `config.ts`, `crypto.ts` (`sign`, `equal`, from `auth.ts`), `db/{db,migrations,statement}`, `bank/{client,bank}` (was `banking/`), `model/gateway`, `http/{router,context,respond,errors,http-error,health}` (`HttpError` from `auth.ts`), `telemetry/{telemetry,events.repo}`.
+  - `server/`: the composition root, `routes.ts` (was `http/routes.ts`), `handle.ts` (was `http/handle.ts`) and `seed.ts` (was `src/seed.ts`).
+  - `app/_ui/` is grouped the same way plus `shell/` and `lib/`.
+- **Dependency rules** (`eslint.config.mjs`, each proven to fire on a planted violation):
+  - Features depend on `platform/`; a feature imports another only through its `index.ts` (static or `import()`).
+  - `platform/` imports no feature and not `server/`; there are no exceptions. The shared primitives a feature also exports (`sign`/`equal`, `HttpError`) moved into `platform/` and `identity` re-exports them, so all importers get the same class (checked at runtime through `src/auth`, `identity` and `platform`).
+  - Only `server/` deep-imports a feature's `http/`; features import `server/` only from tests (`seedApp`); `app/`, `scripts/` and `tests/` never import a feature's `http/`.
+  - Nothing in `src/` imports a frozen shim or the `@/src/` alias.
+  - A tool imports only types from `assistant` (`@typescript-eslint/no-restricted-imports`, `allowTypeImports`).
+- **No runtime import cycles.** `conversationFor` moved from `conversations/http/` to `conversations/ownership.ts`, so `conversations/index.ts` no longer loads `assistant`, the tool registry or the model gateway. Tools take `Tool` as a type only. A value-import graph of `src/` has no cycle.
+- **Frozen surface.** Every path in `public-surface.test.ts` still exists: the moved modules are re-exported by thin shims (`config`, `db`, `seed`, `auth`, `people`, `banking/{client,actions}`, `ingestion/pipeline`, `retrieval/{store,embeddings}`; `agent/{run,tools}` were already shims and now re-export straight from the assistant modules). Nothing in the app imports a shim; `scripts/`, `tests/` and the route import the new paths. Feature `index.ts` files export only what another feature or `server/` uses.
+- **Gates.** Lint 0 errors (the same 5 warnings), format, typecheck, `npm test` 441, the test-title preservation diff empty, Playwright 11, `next build`.
