@@ -2,7 +2,7 @@
 
 Evaluator entry point for the Banana Bank challenge ([`../docs/challenge.md`](../docs/challenge.md)). Project setup and troubleshooting: [`../README.md`](../README.md).
 
-**Status line.** Written against `main` at `885ddf8`. On `main`: every Part 1 fix in the table below, the architecture refactor, Part 2 commits 1–3 (piece B, transfer pre-flight checks) and the eval harness (base and per-metric gating). **Landing** (being integrated, finalised by Pablo after integration): Part 2 commits 4–7 (piece A, the verified case brief, and its real-model eval) and readiness fixes P0-5 and P0-6. Rows marked _landing_ get their SHA when they reach `main`; nothing below reports a result that was not produced.
+**Status line.** Written against `main` at `ed1284b`. On `main`: every Part 1 fix in the table below (readiness P0-5 and P0-6 included), the architecture refactor, Part 2 commits 1–3 (piece B, transfer pre-flight checks) and the eval harness (base and per-metric gating). **Landing** (being integrated, finalised by Pablo after integration): Part 2 commits 4–7 (piece A, the verified case brief, and its real-model eval). Rows marked _landing_ get their SHA when they reach `main`; nothing below reports a result that was not produced.
 
 ## Part 1 - Prepare for Monday
 
@@ -25,13 +25,13 @@ The supporting fixes around it close the same path from both ends: nothing moves
 | Bank integration | A lost response was recorded as `failed` although the bank had committed it                                   | Unconfirmed outcomes become `unknown` and are reconciled with the bank                                                   | `99659a1`            |
 | Production start | P1-5: production silently used public default secrets                                                         | `npm start` exits 1 with default, short, default-based or reused secrets                                                 | `f13e833`            |
 | Identity         | P0-7: any visitor could pick any person, operators included                                                   | Persona switcher off by default in production; production refuses to start with it on (real login stays open)          | `fd8f221`            |
+| HTTP             | P0-5: DNS rebinding: a page whose name re-resolves to 127.0.0.1 passed the same-origin check                   | Host allowlist (`127.0.0.1`/`localhost` on `APP_PORT` plus `ALLOWED_HOSTS`); any other Host gets 421 on every page, asset and API request. Verified by unit tests, the "Host allowlist" e2e journey (`evil.test` gets 421) and mutations, each red then restored | `ed1284b`            |
+| Money path       | P0-6: the proposal card showed raw ids (`acc-lucia → acc-bruno`), so a transfer to another person looked like any other | The card names the source account and the recipient, with a masked IBAN and "another person"; never a raw id. Verified by unit tests, the e2e journey "should name the source account and the recipient on the proposal card" and mutations, each red then restored | `93b1763`            |
 | Model provider   | No OpenAI credit blocked every chat path                                                                      | Opt-in `claude-cli` provider with lexical search fallback; developer items get system authority, strict schema, run metadata | `966f5e0`, `55b0e8a`, `502fa3e`, `d2f0a5a` |
 | Persistence      | P2-2: no schema migrations, positional inserts                                                                | `loadConfig`, versioned migrations and table repositories                                                                | `db48b4b`            |
 | HTTP             | P2-7: `route.ts` god handler; wrong methods, trailing segments, role checked after body                       | Router and handlers; 405 with `Allow`, exact paths, role before body                                                     | `6e348db`, `420cbed` |
 
 Other fixes from the review, each with its own test: same-account and unknown-destination transfers rejected (`f8738fc`); cited, version-valid answers (`1ad39d8`); malformed tool arguments and round-limit exhaustion reported (`28b4d55`, `81d766a`); conversation ownership in `sendMessage` (`0a9f7fe`); every chunk labelled and only valid versions searched (`345799d`); embeddings-batch failure pinned (`ff97cbf`); full operator case evidence (`bc3cc62`); cross-site POST without `Origin` rejected (`efe364c`); telemetry keeps arguments, output, error and duration (`d93fae5`).
-
-**Landing:** P0-5 (DNS rebinding, Host allowlist) and P0-6 (readable proposal card instead of raw account ids).
 
 ### How each was verified
 
