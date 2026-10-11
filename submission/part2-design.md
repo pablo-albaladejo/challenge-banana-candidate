@@ -2,7 +2,7 @@
 
 This is the design and implementation plan for the differentiating improvement (challenge Part 2). It
 is written for an executor: every design decision is taken here, and what is still genuinely open is
-listed in §11. Nothing in this document has been implemented yet.
+listed in §11. **Status:** commits 1–6 are on `main`; commit 7 (the real-model eval) is not done, only its harness is (see §9).
 
 **Revision 2.** An independent critic reviewed the first version and returned REVISE. This version
 applies every finding and the agreed cuts:
@@ -14,7 +14,7 @@ applies every finding and the agreed cuts:
 
 **Preconditions and sequencing.**
 
-- **Phase 7a is done.** Phase 7b (transfers) lands **first**.
+- **As executed:** Phase 7b (transfers) landed **first**.
 - **Piece B and its commits overlap with 7c/7d**, because piece B lives in transfers.
 - **Piece A starts after 7d**, because it needs support and conversations in their Phase 7 layout.
 
@@ -177,7 +177,7 @@ The model can say any of these things in prose, and today it would be inventing 
 
 ## 3. Layers and routed readings
 
-This follows `STUDYING_A_FEATURE.md`. Each stage can fail independently, so each gets its own layer of
+This follows a layered study method. Each stage can fail independently, so each gets its own layer of
 ground truth, ordered by the cost of that truth.
 
 ### 3.1 Layers
@@ -192,7 +192,7 @@ ground truth, ordered by the cost of that truth.
 
 An LLM judge never gates (hub: _Gates on stochastic model output_). Details are in §7.
 
-### 3.2 Routed readings (from `00_Sources/TOPIC_MAP.md` and `03_Decisions_and_Challenges/`)
+### 3.2 Routed readings (from the author's private reading notes)
 
 | #   | Reading                                                                                                                                                    | Why this one                                                                                                                                      | Paired repo action                                                                             |
 | --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
@@ -1754,11 +1754,12 @@ npm run dev                   # app :3000, bank :4001
 5. **Under failure.**
 
    ```bash
-   npm run scenario -- lost-response   # the bank returns no response to transfers
+   npm run scenario -- lost-response   # the bank loses the response of the next new transfer
    ```
 
-   As Lucía, confirm a transfer; the outcome is unknown. Send the same transfer again and override the
-   hold: the `pending_twin` warning cites P0-4. Then run `npm run scenario -- normal`.
+   As Lucía, confirm a transfer: the retry reuses the reference and the bank answers `replay`, so it
+   completes with one debit (an `unknown` outcome needs a bank that loses every response, see
+   `part1-evidence.md` §2b). Then run `npm run scenario -- normal`.
 
 6. **Without a key.** Stop the app, blank `OPENAI_API_KEY` in `.env.local`, and run `npm run dev`. As
    Marta, open `case-lucia` and press Generate brief. The degraded brief still shows ❌, the retry
