@@ -20,17 +20,9 @@ const rank = {
   assistant: 4,
 };
 const up = (depth) => '\\.\\./'.repeat(depth);
-/** Verticals already split into layers (7b, 7c, 7d.1-7d.5): index-only from outside, seed excepted. */
-const layered = [
-  'transfers',
-  'assistant',
-  'knowledge',
-  'conversations',
-  'support',
-  'identity',
-  'accounts',
-];
-/** The layered verticals whose infrastructure/ the seed may import (`insertIntent`, `insertConversation`, `insertMessage`, `insertIncident`). */
+/** The folders a vertical may hold besides its index.ts (plan §10.1, folder contract). */
+const layerFolders = ['domain', 'application', 'infrastructure', 'entry-points'];
+/** The verticals whose infrastructure/ the seed may import (`insertIntent`, `insertConversation`, `insertMessage`, `insertIncident`). */
 const seedInfrastructure = ['transfers', 'conversations', 'support'];
 const frozenShims = (depth) => ({
   regex: `^${up(depth)}((config|db|seed|auth|people)(\\.ts)?|(agent|banking|ingestion|retrieval)(/.*)?)$`,
@@ -151,14 +143,10 @@ const layers = {
       message: 'Only dependencies.ts and legacy.ts touch infrastructure/.',
     },
   ],
-  // Until the flat layout is gone (7d), the index of a flat vertical may still re-export today's
-  // flat files, but never the new layer folders; a layered vertical's index re-exports only
-  // ./entry-points/ (the final 7d rule).
+  // Every vertical's index re-exports only ./entry-points/ (plan §10.6, end of Phase 7).
   index: (v) => [
     {
-      regex: layered.includes(v)
-        ? '^\\./(?!entry-points/)'
-        : '^\\./(domain|application|infrastructure)(/|$)',
+      regex: '^\\./(?!entry-points/)',
       // Types are erased, so `export type { X } from './domain/x'` may publish a public type.
       allowTypeImports: true,
       message: 'index.ts re-exports only ./entry-points/ (types excepted).',
@@ -175,8 +163,6 @@ const layers = {
     ...rankEntries(v, 1),
     ...feature(1, false),
   ],
-  // Today's files, outside the layer folders: the Phase 6 rules plus the vertical rank.
-  flat: (v, depth) => [...feature(depth, false), ...rankEntries(v, depth)],
   shared: (depth) => [
     {
       regex: `^${up(depth)}(?!shared/)`,
@@ -195,22 +181,22 @@ const layers = {
     frozenShims(depth),
     alias,
   ],
-  // The composition root may deep-import feature internals (their http/ handlers).
+  // What every src/server file obeys, its tests included (a server test may deep-import: the seed
+  // test reads the chunk store).
   server: (depth) => [frozenShims(depth), alias],
-  // ...but a layered vertical only through its index.ts; seed.ts, a fixture loader, may also
-  // reach its infrastructure/ (plan §10.10, C3) and nothing else deep.
+  // The composition root reaches a vertical only through its index.ts; seed.ts, a fixture loader,
+  // may also reach its infrastructure/ (plan §10.10, C3) and nothing else deep.
   composition: (depth, seed) => [
     ...layers.server(depth),
     {
-      regex: `^${up(depth)}(${layered.filter((v) => !seed || !seedInfrastructure.includes(v)).join('|')})/(?!index(\\.ts)?$).+`,
-      message: "Import a layered vertical only through its index.ts ('../<vertical>').",
+      regex: `^${up(depth)}(${verticals.filter((v) => !seed || !seedInfrastructure.includes(v)).join('|')})/(?!index(\\.ts)?$).+`,
+      message: "Import a vertical only through its index.ts ('../<vertical>').",
     },
     ...(seed
       ? [
           {
             regex: `^${up(depth)}(${seedInfrastructure.join('|')})/(?!index(\\.ts)?$|infrastructure/).+`,
-            message:
-              'seed.ts reaches a layered vertical only through its index.ts or its infrastructure/.',
+            message: 'seed.ts reaches a vertical only through its index.ts or its infrastructure/.',
           },
         ]
       : []),
@@ -230,13 +216,6 @@ const restrict = (files, patterns, extra = {}) => ({
     ],
   },
 });
-const layerGlobs = [
-  'src/*/domain/**',
-  'src/*/application/**',
-  'src/*/infrastructure/**',
-  'src/*/entry-points/**',
-  'src/*/index.ts',
-];
 const wiringFiles = (v) => [
   `src/${v}/entry-points/dependencies.ts`,
   `src/${v}/entry-points/legacy.ts`,
@@ -254,7 +233,7 @@ const boundaries = [
         ),
       ),
   ),
-  // Entry-points, wiring, index and the flat layout carry the rank of their vertical.
+  // Entry-points, wiring and index carry the rank of their vertical.
   ...verticals.flatMap((v) => [
     restrict(wiringFiles(v), layers.wiring(v, 2)),
     ...depths
@@ -265,9 +244,6 @@ const boundaries = [
         }),
       ),
     restrict([`src/${v}/index.ts`], layers.index(v)),
-    ...depths.map((d) =>
-      restrict([at(`src/${v}/`, d, 1)], layers.flat(v, d), { ignores: layerGlobs }),
-    ),
   ]),
   ...depths.map((d) =>
     restrict([at('src/shared/', d, 1)], layers.shared(d), { paths: cryptoPaths }),
@@ -384,6 +360,28 @@ export default defineConfig([
       ],
     },
   },
+  // No `eslint-disable` (or any inline config) in src/: the boundaries above cannot be waived from
+  // inside the file they restrict.
+  { files: ['src/**'], linterOptions: { noInlineConfig: true } },
+  // Every vertical is layered (end of Phase 7): a source or test file outside index.ts and the
+  // layer folders is an error, so no flat file can come back unchecked by the layer rules. Every
+  // script extension counts, so a stray .js/.mjs/.cjs/.mts/.cts file is caught too.
+  {
+    files: [`src/{${verticals.join(',')}}/**/*.{ts,tsx,mts,cts,js,mjs,cjs}`],
+    ignores: [
+      `src/{${verticals.join(',')}}/index.ts`,
+      `src/{${verticals.join(',')}}/{${layerFolders.join(',')}}/**`,
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'Program',
+          message: `A vertical holds only index.ts and ${layerFolders.join('/, ')}/ (plan §10.1).`,
+        },
+      ],
+    },
+  },
   // Outside src/, only src/server may reach a feature's http/ handlers.
   {
     files: ['app/**/*.{ts,tsx}', 'scripts/**/*.ts', 'tests/**/*.ts', '*.ts'],
@@ -393,7 +391,7 @@ export default defineConfig([
         {
           patterns: [
             {
-              regex: `(^|/)src/(${features})/(http|entry-points/http)(/|$)`,
+              regex: `(^|/)src/(${features})/entry-points/http(/|$)`,
               message: "A feature's http/ handlers are wired only by src/server/routes.ts.",
             },
           ],
