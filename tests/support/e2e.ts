@@ -23,6 +23,7 @@ export async function resetBank(profile: BankProfile = 'normal', seed?: number) 
 }
 /** Test-only view of the bank ledger. */
 export const bankSnapshot = (): Promise<{
+  accounts: { id: string; balanceCents: number }[];
   operations: { userId: string; amountCents: number; concept: string }[];
 }> => admin('/admin/snapshot');
 /** Opens the app as a person, through the same selector a user would use. */

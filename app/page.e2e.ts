@@ -209,3 +209,31 @@ describe('Rejected transfer', () => {
     expect((await bankSnapshot()).operations.filter((o) => o.concept === concept)).toHaveLength(0);
   });
 });
+describe('Pre-flight checks', () => {
+  beforeEach(() => resetBank());
+  it('should show the code-written checks on the approval card before the customer confirms', async ({
+    page,
+  }) => {
+    // Arrange
+    const concept = `E2E big dinner ${Date.now()}`;
+    const amountCents = 20000;
+    const [source] = (await bankSnapshot()).accounts.filter((a) => a.id === accounts.lucia);
+    const after = new Intl.NumberFormat('en-GB', { minimumFractionDigits: 2 }).format(
+      (source.balanceCents - amountCents) / 100,
+    );
+    await openAs(page, 'Lucía Martín');
+    await page.getByRole('navigation').getByRole('button', { name: 'Transfers' }).click();
+    await page.getByLabel('Recipient').selectOption({ value: accounts.bruno });
+    await page.getByLabel('Amount in euros').fill(String(amountCents / 100));
+    await page.getByPlaceholder('What is this transfer for?').fill(concept);
+    // Act
+    await page.getByRole('button', { name: 'Send transfer' }).click();
+    // Assert
+    const card = page.locator('.approvals > div').filter({ hasText: concept });
+    await expect(card).toContainText(`will have EUR ${after}`);
+    await expect(card).toContainText('larger than any payment from your accounts');
+    await expect(card).not.toContainText('You have not sent money');
+    await expect(card.getByRole('button', { name: 'Confirm these details' })).toBeEnabled();
+    expect((await bankSnapshot()).operations.filter((o) => o.concept === concept)).toHaveLength(0);
+  });
+});

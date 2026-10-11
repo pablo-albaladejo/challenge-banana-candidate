@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { date, money } from './format';
+import { date, money, time } from './format';
 
 describe('money', () => {
   it('should format integer cents as euros with two decimals', () => {
@@ -37,5 +37,16 @@ describe('date', () => {
     const text = date(localTimestamp);
     // Assert
     assert.match(text, /^24 Sept?, 09:05$/);
+  });
+});
+
+describe('time', () => {
+  it('should show the 24-hour time of a timestamp', () => {
+    // Arrange
+    const localTimestamp = '2026-09-24T21:05:00';
+    // Act
+    const text = time(localTimestamp);
+    // Assert
+    assert.equal(text, '21:05');
   });
 });

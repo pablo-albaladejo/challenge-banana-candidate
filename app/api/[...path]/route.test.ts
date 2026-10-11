@@ -657,6 +657,23 @@ describe('POST /api/actions', () => {
     );
   });
 
+  it('should show on the dashboard the same pre-flight checks the proposal returned', async () => {
+    // Arrange
+    const input = transferInputFactory.build();
+    // Act
+    const result = await api('POST', 'actions', {
+      as: customers.lucia,
+      body: { name: 'transfer_money', arguments: input },
+    });
+    // Assert
+    assert.equal(result.body.checks[0].id, 'balance_after');
+    const dashboard = await api('GET', 'dashboard', { as: customers.lucia });
+    assert.deepEqual(
+      dashboard.body.approvals.map((a: any) => [a.id, a.checks]),
+      [[result.body.approval.id, result.body.checks]],
+    );
+  });
+
   it('should keep a single proposal when the same intent is proposed again', async () => {
     // Arrange
     const body = {

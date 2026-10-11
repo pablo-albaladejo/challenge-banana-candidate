@@ -867,6 +867,38 @@ label select {
   border-radius: 8px;
   margin-bottom: 10px;
 }
+.preflight h3 {
+  margin: 12px 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.preflight ul {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+.preflight-check {
+  display: flex;
+  gap: 8px;
+  padding: 6px 0;
+}
+.preflight-check p {
+  margin: 0;
+}
+.preflight-check small {
+  display: block;
+  text-align: right;
+  font-size: 11px;
+  color: var(--muted);
+}
+.preflight-check.blocker {
+  color: #9c4335;
+}
+.preflight-check.warning {
+  color: #7a5b00;
+}
 .case-count {
   padding: 16px 22px;
   background: #e9efe0;
