@@ -1,6 +1,6 @@
 import { config } from '../../platform/config';
 import { randomIds, systemClock } from '../../platform/runtime';
-import { person } from '../../identity';
+import { identity } from '../../identity';
 import { sqliteIntents } from '../infrastructure/sqlite-intents.repo';
 import { sqliteApprovals } from '../infrastructure/sqlite-approvals.repo';
 import { httpTransfersBank } from '../infrastructure/http-transfers-bank.adapter';
@@ -47,7 +47,7 @@ const defaults = (): TransfersDeps => ({
   approvals: sqliteApprovals,
   bank: httpTransfersBank,
   dispatching: inMemoryDispatchRegistry(),
-  customers: { roleOf: (id) => person(id)?.role },
+  customers: { roleOf: (id) => identity().findPerson({ id })?.role },
   events: telemetryEventLog,
   unitOfWork: sqliteUnitOfWork,
   clock: systemClock,

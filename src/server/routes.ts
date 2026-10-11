@@ -3,8 +3,7 @@
 import type { Route } from '../platform/http/router';
 import type { Handler, PublicHandler } from '../platform/http/context';
 import { health } from '../platform/http/health';
-import { listPeople } from '../identity/http/people';
-import { currentSession, selectPerson } from '../identity/http/session';
+import { currentSession, listPeople, selectPerson } from '../identity';
 import { dashboard } from '../accounts/http/dashboard';
 import { conversationDetail, createConversation, listConversations } from '../conversations';
 import { confirmApproval } from '../transfers';

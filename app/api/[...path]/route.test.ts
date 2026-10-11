@@ -4,7 +4,7 @@ import { faker } from '@faker-js/faker';
 import { GET, POST } from './route';
 import { seedApp } from '../../../src/server/seed';
 import { appDb } from '../../../src/platform/db/db';
-import { sessionToken } from '../../../src/identity/auth';
+import { sessionToken } from '../../../src/auth';
 import { documents } from '../../../src/knowledge';
 import { assistant } from '../../../src/assistant';
 import { api } from '../../../tests/support/api';
@@ -242,6 +242,19 @@ describe('GET /api/people', () => {
       [operators.marta, operators.pablo],
     );
   });
+
+  it('should list every person in roster order with only its display fields', async () => {
+    // Arrange
+    // Act
+    const result = await api('GET', 'people');
+    // Assert
+    assert.deepEqual(
+      result.body.map((p: any) => p.id),
+      [...Object.values(customers), ...Object.values(operators)],
+    );
+    for (const p of result.body)
+      assert.deepEqual(Object.keys(p), ['id', 'name', 'role', 'initials', 'color']);
+  });
 });
 
 describe('POST /api/session', () => {
@@ -267,6 +280,18 @@ describe('POST /api/session', () => {
     assert.match(cookie, /HttpOnly/);
     assert.match(cookie, /SameSite=Strict/);
     assert.match(cookie, /Path=\//);
+  });
+
+  it('should set exactly the session cookie attributes, with no Secure flag and no expiry', async () => {
+    // Arrange
+    const body = { userId: operators.marta };
+    // Act
+    const result = await api('POST', 'session', { body });
+    // Assert
+    assert.equal(
+      result.headers.get('set-cookie'),
+      `banana_actor=${sessionToken(operators.marta)}; Path=/; HttpOnly; SameSite=Strict`,
+    );
   });
 
   it('should reject an unknown person', async () => {
@@ -334,6 +359,28 @@ describe('GET /api/session', () => {
     // Assert
     assert.equal(result.status, 401);
     assert.equal(result.body.error, 'Invalid session.');
+  });
+
+  it('should reject a validly signed session cookie for an unknown person', async () => {
+    // Arrange
+    const headers = { cookie: `banana_actor=${sessionToken(unknown.person)}` };
+    // Act
+    const result = await api('GET', 'session', { headers });
+    // Assert
+    assert.equal(result.status, 401);
+    assert.equal(result.body.error, 'Invalid session.');
+  });
+
+  it('should return the roster profile of the session person', async () => {
+    // Arrange
+    const roster = await api('GET', 'people');
+    // Act
+    const result = await api('GET', 'session', { as: operators.pablo });
+    // Assert
+    assert.deepEqual(
+      result.body.person,
+      roster.body.find((p: any) => p.id === operators.pablo),
+    );
   });
 
   it('should ask to select a person when the request has no session cookie', async () => {

@@ -1,7 +1,7 @@
 import { randomIds, systemClock } from '../../platform/runtime';
 import { conversations } from '../../conversations';
 import { transfers } from '../../transfers';
-import { person } from '../../identity';
+import { identity } from '../../identity';
 import { sqliteIncidents } from '../infrastructure/sqlite-incidents.repo';
 import { telemetryEventReader } from '../infrastructure/telemetry-event-reader';
 import { httpOperatorBank } from '../infrastructure/http-operator-bank.adapter';
@@ -35,7 +35,7 @@ export type SupportOverrides = Partial<Pick<SupportDeps, 'clock' | 'ids'>>;
 // The wired ports call the other verticals' accessors lazily, inside the arrow, never at wiring.
 const defaults = (): SupportDeps => ({
   incidents: sqliteIncidents,
-  people: { find: (id) => person(id) },
+  people: { find: (id) => identity().findPerson({ id }) },
   history: { messagesIn: (conversationId) => conversations().listMessages({ conversationId }) },
   events: telemetryEventReader,
   transfers: {

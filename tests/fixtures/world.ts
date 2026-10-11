@@ -1,5 +1,5 @@
 // The seeded world that both the real bank and the app know about. Every value here mirrors a seed
-// (src/identity/people.ts, src/server/seed.ts + fixtures/conversations.json, and the bank seed
+// (src/identity/infrastructure/people-roster.ts, src/server/seed.ts + fixtures/conversations.json, and the bank seed
 // behind docs/contracts.md), so tests can name real people, accounts and cases without magic strings.
 // Faker never invents these: the real bank validates ids, so a fake id is a different test.
 

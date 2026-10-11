@@ -1,13 +1,10 @@
-import { config } from '../platform/config';
-import { equal, sign } from '../platform/crypto';
-import { HttpError } from '../platform/http/http-error';
-import { person } from './people';
-// Frozen surface (src/auth.ts): the shared primitives now live in platform/ and are re-exported
-// here, so `HttpError` stays one class for every importer.
-export { equal, sign, HttpError };
-export function sessionToken(userId: string) {
-  return `${userId}.${sign(userId, config.sessionSecret)}`;
-}
+import { HttpError } from '../../../platform/http/http-error';
+import { identity } from '../dependencies';
+/**
+ * The actor of a private route: the person behind the signed `banana_actor` cookie. Identity
+ * headers and the request body are never read. Both 401s stay here (transport); `VerifySession`
+ * checks the signature and looks the person up in the roster.
+ */
 export function actor(request: Request) {
   const token = (request.headers.get('cookie') || '')
     .split(';')
@@ -15,10 +12,8 @@ export function actor(request: Request) {
     .find((s) => s.startsWith('banana_actor='))
     ?.slice('banana_actor='.length);
   if (!token) throw new HttpError(401, 'Select a person to continue.');
-  const [id, signature] = token.split('.');
-  const p = person(id);
-  if (!p || !signature || !equal(signature, sign(id, config.sessionSecret)))
-    throw new HttpError(401, 'Invalid session.');
+  const p = identity().verifySession({ token });
+  if (!p) throw new HttpError(401, 'Invalid session.');
   return p;
 }
 /**

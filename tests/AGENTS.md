@@ -5,7 +5,7 @@
 
 ## Purpose
 
-Shared test infrastructure only. Test files themselves are **colocated** next to the source they test (`src/identity/auth.ts` → `src/identity/auth.test.ts`). Conventions live in `../TESTING.md`.
+Shared test infrastructure only. Test files themselves are **colocated** next to the source they test (`src/identity/infrastructure/people-roster.ts` → `src/identity/infrastructure/people-roster.test.ts`). Conventions live in `../TESTING.md`.
 
 ## Key Files
 

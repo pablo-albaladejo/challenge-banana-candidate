@@ -20,8 +20,8 @@ const rank = {
   assistant: 4,
 };
 const up = (depth) => '\\.\\./'.repeat(depth);
-/** Verticals already split into layers (7b, 7c, 7d.1, 7d.2, 7d.3): index-only from outside, seed excepted. */
-const layered = ['transfers', 'assistant', 'knowledge', 'conversations', 'support'];
+/** Verticals already split into layers (7b, 7c, 7d.1, 7d.2, 7d.3, 7d.4): index-only from outside, seed excepted. */
+const layered = ['transfers', 'assistant', 'knowledge', 'conversations', 'support', 'identity'];
 /** The layered verticals whose infrastructure/ the seed may import (`insertIntent`, `insertConversation`, `insertMessage`, `insertIncident`). */
 const seedInfrastructure = ['transfers', 'conversations', 'support'];
 const frozenShims = (depth) => ({
@@ -155,6 +155,15 @@ const layers = {
       allowTypeImports: true,
       message: 'index.ts re-exports only ./entry-points/ (types excepted).',
     },
+    // `sessionToken` mints a session for any id: only the frozen `src/auth.ts` shim may reach it.
+    ...(v === 'identity'
+      ? [
+          {
+            regex: '^\\./entry-points/legacy(\\.ts)?$',
+            message: "identity's legacy.ts (sessionToken) is for the src/auth.ts shim only.",
+          },
+        ]
+      : []),
     ...rankEntries(v, 1),
     ...feature(1, false),
   ],
