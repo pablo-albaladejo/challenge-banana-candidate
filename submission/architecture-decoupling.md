@@ -516,7 +516,6 @@ Parallelism exists only inside a phase, for independent sub-steps such as indivi
   - In the P0 block, decide enforcement for `transition()` (open question 5), with TDD.
   - Route-quirk cleanup (open question 4).
   - The Part 2 tool as a registry entry (open question 3).
-  - Optionally record this decision in the hub (Pablo's choice).
 
 ---
 

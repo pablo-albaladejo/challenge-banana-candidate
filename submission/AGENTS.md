@@ -24,7 +24,7 @@ Holds the candidate's delivery materials. This folder ships inside the single pr
 | `ai-sessions/7ca132fc-07c4-4d26-bc93-278238e5f185.jsonl` | Short `claude -p` probe session (Haiku)                                                                          |
 | `ai-sessions.zip`                                        | Subagent transcripts; added at packaging, not tracked                                                            |
 | `demo.mp4`                                               | Demo video recorded from `video-script.md`; added at packaging, not tracked                                      |
-| Case-brief eval report                                   | Landing with Part 2 commit 7                                                                                     |
+| Case-brief eval report                                   | Not produced (Part 2 commit 7 not done)                                                                          |
 
 Every included file must be listed with its relative path in `README.md`.
 

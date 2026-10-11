@@ -2,7 +2,7 @@
 
 Evaluator entry point for the Banana Bank challenge ([`../docs/challenge.md`](../docs/challenge.md)). Project setup and troubleshooting: [`../README.md`](../README.md).
 
-**Status line.** Written against `main` at `ed1284b`. On `main`: every Part 1 fix in the table below (readiness P0-5 and P0-6 included), the architecture refactor, Part 2 commits 1–3 (piece B, transfer pre-flight checks) and the eval harness (base and per-metric gating). **Landing** (being integrated, finalised by Pablo after integration): Part 2 commits 4–7 (piece A, the verified case brief, and its real-model eval). Rows marked _landing_ get their SHA when they reach `main`; nothing below reports a result that was not produced.
+**Status line.** Written against `main` at `ed1284b`. On `main`: every Part 1 fix in the table below (readiness P0-5 and P0-6 included), the architecture refactor, Part 2 commits 1–3 (piece B, transfer pre-flight checks) and the eval harness (base and per-metric gating). **Landing** (being integrated, finalised by Pablo after integration): Part 2 commits 4–6 (piece A, the verified case brief). **Not done:** Part 2 commit 7, the real-model case-brief eval: only its harness is on `main`, and no eval suite was run or reported. Rows marked _landing_ get their SHA when they reach `main`; nothing below reports a result that was not produced.
 
 ## Part 1 - Prepare for Monday
 
@@ -75,7 +75,7 @@ The full click path, including the degraded brief without a model, is in [`video
 | 4   | Deterministic case brief: timeline, claim oracle, findings, procedures | _Landing_                                 |
 | 5   | Operator reply closes the case and reaches the customer                | _Landing_                                 |
 | 6   | Model-written brief: claim extraction, writing call, post-check        | _Landing_                                 |
-| 7   | Real-model case-brief eval (L5)                                        | Harness on `main` (`dc39816`, `885ddf8`); suite and report _landing_ |
+| 7   | Real-model case-brief eval (L5)                                        | Harness on `main` (`dc39816`, `885ddf8`); suite and report **not done** |
 
 ## Verified / not verified
 
@@ -126,7 +126,7 @@ Requirements: Node 24 or newer, npm, and for `claude-cli` the Claude Code CLI lo
 | `ai-sessions/7ca132fc-07c4-4d26-bc93-278238e5f185.jsonl`                                       | `claude -p` probe on Haiku, 2026-10-10 ("que version de haiju eres"), checking the CLI model                        |
 | `ai-sessions.zip`                                                                              | Subagent transcripts of the main session; added at packaging                                   |
 | `demo.mp4`                                                                                     | Demo video recorded from `video-script.md`; added at packaging                                 |
-| Case-brief eval report                                                                         | _Landing_ with Part 2 commit 7                                                                 |
+| Case-brief eval report                                                                         | Not produced: Part 2 commit 7 was not done                                                                 |
 
 ## Packaging
 
