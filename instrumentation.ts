@@ -3,7 +3,8 @@
 // "Failed to prepare server", keeps listening and answers 500 to everything. So a production
 // server with weak, default or reused secrets (P1-5), or with the demo persona switcher on (P0-7),
 // prints one line naming the variables (never the values, the Error object or its stack) and
-// exits. Every check runs and every refusal goes on that one line, secrets first. In the built
+// exits. Every check runs and every refusal goes on that one line, secrets first. An empty or
+// unusable ALLOWED_HOSTS (P0-5) only logs one warning line: it never stops the server. In the built
 // server webpack inlines NODE_ENV and NEXT_RUNTIME, so a production build always runs the checks
 // in its Node.js runtime.
 export async function register() {
@@ -11,6 +12,9 @@ export async function register() {
     try {
       const { assertNoPersonaSwitcherInProduction, assertProductionSecrets, config, featureFlags } =
         await import('./src/platform/config');
+      const { allowedHostsWarning } = await import('./src/platform/http/trusted-host');
+      const warning = process.env.NODE_ENV === 'production' && allowedHostsWarning(process.env);
+      if (warning) console.warn(`Warning: ${warning}`);
       const checks = await Promise.allSettled([
         (async () => assertProductionSecrets(config, process.env.NODE_ENV))(),
         (async () => assertNoPersonaSwitcherInProduction(featureFlags, process.env.NODE_ENV))(),

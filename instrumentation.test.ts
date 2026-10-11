@@ -14,10 +14,23 @@ const secretNames = ['BANK_SERVICE_SECRET', 'BANK_ADMIN_SECRET', 'SESSION_SECRET
 const watchStartup = (t: TestContext) => ({
   exit: t.mock.method(process, 'exit', () => undefined as never),
   error: t.mock.method(console, 'error', () => {}),
+  warn: t.mock.method(console, 'warn', () => {}),
 });
+const strongStartup = () => {
+  Object.assign(config, {
+    serviceSecret: strongSecret(),
+    adminSecret: strongSecret(),
+    sessionSecret: strongSecret(),
+  });
+  featureFlags.demoPersonaSwitcher = false;
+};
 
 describe('register', () => {
-  const saved = { NODE_ENV: env.NODE_ENV, NEXT_RUNTIME: env.NEXT_RUNTIME };
+  const saved = {
+    NODE_ENV: env.NODE_ENV,
+    NEXT_RUNTIME: env.NEXT_RUNTIME,
+    ALLOWED_HOSTS: env.ALLOWED_HOSTS,
+  };
   const savedSecrets = {
     serviceSecret: config.serviceSecret,
     adminSecret: config.adminSecret,
@@ -148,6 +161,42 @@ describe('register', () => {
     await register();
     // Assert
     assert.equal(exit.mock.callCount() + error.mock.callCount(), 0);
+  });
+  it('should log one ALLOWED_HOSTS warning and still start in production when it is empty', async (t) => {
+    // Arrange
+    env.NODE_ENV = 'production';
+    env.ALLOWED_HOSTS = '';
+    strongStartup();
+    const { exit, error, warn } = watchStartup(t);
+    // Act
+    await register();
+    // Assert
+    assert.equal(exit.mock.callCount() + error.mock.callCount(), 0);
+    assert.deepEqual(
+      warn.mock.calls.map((call) => call.arguments),
+      [['Warning: ALLOWED_HOSTS is empty: only 127.0.0.1 and localhost on APP_PORT are answered.']],
+    );
+  });
+  it('should start in production without a warning when ALLOWED_HOSTS lists host names', async (t) => {
+    // Arrange
+    env.NODE_ENV = 'production';
+    env.ALLOWED_HOSTS = `${faker.internet.domainName()},${faker.internet.domainName()}:8443`;
+    strongStartup();
+    const { exit, error, warn } = watchStartup(t);
+    // Act
+    await register();
+    // Assert
+    assert.equal(exit.mock.callCount() + error.mock.callCount() + warn.mock.callCount(), 0);
+  });
+  it('should leave ALLOWED_HOSTS unchecked outside production', async (t) => {
+    // Arrange
+    env.NODE_ENV = 'development';
+    env.ALLOWED_HOSTS = 'https://bank.example';
+    const { warn } = watchStartup(t);
+    // Act
+    await register();
+    // Assert
+    assert.equal(warn.mock.callCount(), 0);
   });
   it('should start outside production with the local default secrets', async (t) => {
     // Arrange

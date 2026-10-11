@@ -3,10 +3,12 @@ import {
   beforeEach,
   describe,
   expect,
+  getWithHost,
   it,
   openAs,
   resetBank,
 } from '../tests/support/e2e';
+import { e2e } from '../tests/support/e2e-env';
 import { accounts, counts, money } from '../tests/fixtures/world';
 describe('Customer overview', () => {
   beforeEach(() => resetBank());
@@ -333,5 +335,22 @@ describe('Pre-flight checks', () => {
     await expect(
       card.getByRole('button', { name: 'Confirm these details anyway', exact: true }),
     ).toBeEnabled();
+  });
+});
+describe('Host allowlist', () => {
+  it('should serve the page and the API only to an allowed Host header', async () => {
+    // Arrange: the second Host is what a browser sends after evil.test re-resolved to 127.0.0.1.
+    const allowed = `localhost:${e2e.appPort}`;
+    const rebound = `evil.test:${e2e.appPort}`;
+    // Act
+    const page = await getWithHost('/', allowed);
+    const reboundPage = await getWithHost('/', rebound);
+    const reboundApi = await getWithHost('/api/health', rebound);
+    // Assert
+    expect(page.status).toBe(200);
+    expect(page.body).toContain('Banana Bank');
+    expect(reboundPage.status).toBe(421);
+    expect(JSON.parse(reboundPage.body)).toEqual({ error: 'Unknown host.' });
+    expect(reboundApi.status).toBe(421);
   });
 });

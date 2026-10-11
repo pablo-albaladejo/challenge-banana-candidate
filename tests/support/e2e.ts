@@ -1,5 +1,6 @@
 // Playwright aliases so E2E journeys keep the project convention:
 // describe per journey, it('should …') per case, AAA comments in the body.
+import http from 'node:http';
 import { test, expect, type Page } from '@playwright/test';
 import { e2e } from './e2e-env';
 export const describe = test.describe;
@@ -33,4 +34,20 @@ export async function openAs(page: Page, name: string) {
   await expect(selector).toBeEnabled();
   await selector.selectOption({ label: name });
   await expect(page.getByText('Getting things ready…')).toBeHidden();
+}
+/**
+ * GETs a path of the app stack with an explicit `Host` header, as a browser does after a DNS
+ * rebinding: `node:http`, because `fetch` and Playwright set `Host` from the URL.
+ */
+export function getWithHost(path: string, host: string): Promise<{ status: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    const request = http.get({ host: '127.0.0.1', port: e2e.appPort, path, headers: { host } });
+    request.on('response', (response) => {
+      let body = '';
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => (body += chunk));
+      response.on('end', () => resolve({ status: response.statusCode ?? 0, body }));
+    });
+    request.on('error', reject);
+  });
 }

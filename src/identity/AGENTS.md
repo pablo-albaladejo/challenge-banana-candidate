@@ -34,7 +34,7 @@ Hexagonal vertical (plan §10, 7d.4): `application/` (ports, use cases; no servi
 
 - Identity comes only from the signed cookie via `actor()`; never trust a user id from the body or headers. The role is looked up in the roster, never read from the cookie.
 - The two 401s and the 403 are transport and stay `HttpError` in `session-guard.ts`; `StartSession` throws `BadRequestError`, which `platform/http/errors.ts` answers as the same 400.
-- `server/handle.ts` (the composition root) calls `sameOrigin` and `actor`; `platform/` never imports this vertical.
+- `server/handle.ts` (the composition root) calls `sameOrigin` and `actor`, after `platform/http/trusted-host.ts` has refused any `Host` outside the allowlist (P0-5: a rebound page sends a matching `Origin` and `Host`, which `sameOrigin` alone accepts); `platform/` never imports this vertical.
 - Rank 0: value-imports no other vertical.
 - Lint (`eslint.config.mjs`): identity is a layered vertical, so `index.ts` re-exports only `./entry-points/` (types allowed), and never `./entry-points/legacy` (`sessionToken`); `src/server/` reaches it only through the index. The seed does not need it.
 - Things worth scrutinizing:

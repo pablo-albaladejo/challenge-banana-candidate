@@ -9,7 +9,8 @@ export async function api<T = any>(
   options: { as?: string; body?: unknown; headers?: Record<string, string> } = {},
 ): Promise<ApiResponse<T>> {
   const url = new URL(`http://127.0.0.1:3000/api/${path}`);
-  const headers: Record<string, string> = { ...options.headers };
+  // A browser always sends Host; the app answers only its allowlist (P0-5, `trustedHost`).
+  const headers: Record<string, string> = { host: url.host, ...options.headers };
   if (options.as) headers.cookie = `banana_actor=${sessionToken(options.as)}`;
   if (options.body !== undefined) headers['content-type'] = 'application/json';
   const request = new Request(url, {

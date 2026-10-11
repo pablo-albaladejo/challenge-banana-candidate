@@ -56,6 +56,7 @@ describe('POST /api/search', () => {
     const request = new Request('http://localhost/api/search', {
       method: 'POST',
       headers: {
+        host: '127.0.0.1:3000',
         'Content-Type': 'application/json',
         cookie: `banana_actor=${sessionToken(customers.lucia)}`,
       },
@@ -320,7 +321,7 @@ describe('POST /api/session', () => {
     // Arrange
     const request = new Request('http://127.0.0.1:3000/api/session', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { host: '127.0.0.1:3000', 'content-type': 'application/json' },
       body: '{"userId":',
     });
     // Act
@@ -431,7 +432,7 @@ describe('persona switcher turned off (DEMO_PERSONA_SWITCHER)', () => {
     // Arrange
     const request = new Request('http://127.0.0.1:3000/api/session', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { host: '127.0.0.1:3000', 'content-type': 'application/json' },
       body: '{"userId":',
     });
     // Act
@@ -2147,6 +2148,51 @@ describe('unknown routes', () => {
 describe('routing order', () => {
   beforeEach(() => seedApp());
 
+  it('should refuse a signed-in read from an unknown Host before any route answers', async () => {
+    // Arrange
+    const headers = { host: `${faker.internet.domainName()}:3000` };
+    // Act
+    const result = await api('GET', 'dashboard', { as: customers.lucia, headers });
+    // Assert
+    assert.equal(result.status, 421);
+    assert.equal(result.body.error, 'Unknown host.');
+  });
+
+  it('should refuse a rebinding same-origin session request without setting a cookie', async () => {
+    // Arrange: what a browser sends after evil.test re-resolved to 127.0.0.1.
+    const host = `${faker.internet.domainName()}:3000`;
+    const headers = { host, origin: `http://${host}`, 'sec-fetch-site': 'same-origin' };
+    // Act
+    const result = await api('POST', 'session', { body: { userId: customers.lucia }, headers });
+    // Assert
+    assert.equal(result.status, 421);
+    assert.equal(result.body.error, 'Unknown host.');
+    assert.equal(result.headers.get('set-cookie'), null);
+  });
+
+  it('should refuse a public route from an unknown Host', async () => {
+    // Arrange
+    const headers = { host: `${faker.internet.domainName()}:3000` };
+    // Act
+    const result = await api('GET', 'health', { headers });
+    // Assert
+    assert.equal(result.status, 421);
+  });
+
+  it('should answer a host listed in ALLOWED_HOSTS', async (t) => {
+    // Arrange
+    const host = faker.internet.domainName();
+    const saved = process.env.ALLOWED_HOSTS;
+    process.env.ALLOWED_HOSTS = host;
+    t.after(() => {
+      process.env.ALLOWED_HOSTS = saved ?? '';
+    });
+    // Act
+    const result = await api('GET', 'health', { headers: { host } });
+    // Assert
+    assert.equal(result.status, 200);
+  });
+
   it('should require a session before answering an unknown route', async () => {
     // Arrange
     // Act
@@ -2297,7 +2343,10 @@ describe('explicit methods', () => {
 
   it('should answer a head request to a public route like a get', async () => {
     // Arrange
-    const request = new Request('http://127.0.0.1:3000/api/health', { method: 'HEAD' });
+    const request = new Request('http://127.0.0.1:3000/api/health', {
+      method: 'HEAD',
+      headers: { host: '127.0.0.1:3000' },
+    });
     // Act
     const response = await GET(request, { params: Promise.resolve({ path: ['health'] }) });
     // Assert
@@ -2309,7 +2358,10 @@ describe('explicit methods', () => {
     // Arrange
     const request = new Request('http://127.0.0.1:3000/api/documents', {
       method: 'HEAD',
-      headers: { cookie: `banana_actor=${sessionToken(customers.lucia)}` },
+      headers: {
+        host: '127.0.0.1:3000',
+        cookie: `banana_actor=${sessionToken(customers.lucia)}`,
+      },
     });
     // Act
     const response = await GET(request, { params: Promise.resolve({ path: ['documents'] }) });
