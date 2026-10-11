@@ -1,3 +1,4 @@
+import type { ComponentProps } from 'react';
 import type { Person } from '../../../src/types';
 import type { AnyRecord } from '../lib/api';
 import { date, money } from '../lib/format';
@@ -12,6 +13,7 @@ export function OperatorCases({
   brief,
   briefBusy,
   onGenerateBrief,
+  reply,
 }: {
   current: Person;
   dashboard: AnyRecord;
@@ -21,7 +23,12 @@ export function OperatorCases({
   brief: AnyRecord | null;
   briefBusy: boolean;
   onGenerateBrief: () => void;
+  reply: ComponentProps<typeof CaseBriefPanel>['reply'];
 }) {
+  const author = (m: AnyRecord) => {
+    const name = people.find((p) => p.id === m.author_id)?.name;
+    return name ? `Support · ${name.split(' ')[0]}` : 'Support';
+  };
   return (
     <>
       <div className="page-heading">
@@ -77,13 +84,26 @@ export function OperatorCases({
               <h3>Latest message</h3>
               <blockquote>{selectedCase.lastMessage?.content}</blockquote>
               <p className="muted">Received {date(selectedCase.incident.created_at)}</p>
-              <CaseBriefPanel brief={brief} busy={briefBusy} onGenerate={onGenerateBrief} />
+              <CaseBriefPanel
+                brief={brief}
+                busy={briefBusy}
+                onGenerate={onGenerateBrief}
+                reply={reply}
+              />
               {selectedCase.history?.length > 0 && (
                 <>
                   <h3>Conversation</h3>
                   {selectedCase.history.map((m: AnyRecord) => (
                     <p key={m.id}>
-                      <b>{m.role === 'user' ? 'Customer' : 'Assistant'}:</b> {m.content}
+                      <b>
+                        {m.role === 'user'
+                          ? 'Customer'
+                          : m.role === 'operator'
+                            ? author(m)
+                            : 'Assistant'}
+                        :
+                      </b>{' '}
+                      {m.content}
                     </p>
                   ))}
                 </>

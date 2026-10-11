@@ -7,11 +7,13 @@ import { sqliteIncidents } from '../infrastructure/sqlite-incidents.repo';
 import { telemetryEventReader } from '../infrastructure/telemetry-event-reader';
 import { httpOperatorBank } from '../infrastructure/http-operator-bank.adapter';
 import { telemetryCaseEvents } from '../infrastructure/telemetry-case-events';
+import { sqliteUnitOfWork } from '../infrastructure/sqlite-unit-of-work';
 import { makeListIncidents } from '../application/use-cases/list-incidents';
 import { makeGetOperatorWorkspace } from '../application/use-cases/get-operator-workspace';
 import { makeGetCaseDetail } from '../application/use-cases/get-case-detail';
 import { makeRequestHuman } from '../application/use-cases/request-human';
 import { makeGenerateCaseBrief } from '../application/use-cases/generate-case-brief';
+import { makeReplyAndCloseCase } from '../application/use-cases/reply-and-close-case';
 import { makeCaseFacts } from '../application/services/case-facts';
 import type { Clock } from '../../shared/ports/clock';
 import type { Ids } from '../../shared/ports/ids';
@@ -23,6 +25,8 @@ import type { ConversationTransfers } from '../application/ports/conversation-tr
 import type { OperatorBank } from '../application/ports/operator-bank';
 import type { ProcedureCatalog } from '../application/ports/procedure-catalog';
 import type { CaseEvents } from '../application/ports/case-events';
+import type { CaseReplies } from '../application/ports/case-replies';
+import type { UnitOfWork } from '../../shared/ports/unit-of-work';
 export type SupportDeps = {
   incidents: IncidentRepository;
   people: People;
@@ -32,6 +36,8 @@ export type SupportDeps = {
   bank: OperatorBank;
   procedures: ProcedureCatalog;
   caseEvents: CaseEvents;
+  replies: CaseReplies;
+  unitOfWork: UnitOfWork;
   clock: Clock;
   ids: Ids;
 };
@@ -64,17 +70,21 @@ const defaults = (): SupportDeps => ({
         .documents.filter((d) => d.family === 'procedure'),
   },
   caseEvents: telemetryCaseEvents,
+  replies: { append: (reply) => conversations().appendMessage(reply) },
+  unitOfWork: sqliteUnitOfWork,
   clock: systemClock,
   ids: randomIds,
 });
 export function wireSupport(overrides: SupportOverrides = {}) {
   const deps = { ...defaults(), ...overrides };
+  const caseFacts = makeCaseFacts(deps);
   return {
     listIncidents: makeListIncidents(deps),
     getOperatorWorkspace: makeGetOperatorWorkspace(deps),
     getCaseDetail: makeGetCaseDetail(deps),
     requestHuman: makeRequestHuman(deps),
-    generateCaseBrief: makeGenerateCaseBrief({ ...deps, caseFacts: makeCaseFacts(deps) }),
+    generateCaseBrief: makeGenerateCaseBrief({ ...deps, caseFacts }),
+    replyAndCloseCase: makeReplyAndCloseCase({ ...deps, caseFacts }),
   };
 }
 /** What index.ts exposes: the use cases. */

@@ -21,7 +21,10 @@ const countBy = (keys: string[]) =>
     {},
   );
 
-/** `case.brief_generated` in the case conversation's events, written as the operator. */
+/**
+ * `case.brief_generated` and `case.replied` in the case conversation's events, written as the
+ * operator. Neither copies customer or reply text.
+ */
 export const telemetryCaseEvents: CaseEvents = {
   briefGenerated: ({ id, operatorId, evidence, brief }) =>
     insertEvent({
@@ -43,5 +46,22 @@ export const telemetryCaseEvents: CaseEvents = {
         evidenceHash: evidenceHash(evidence),
       }),
       createdAt: brief.generatedAt,
+    }),
+  replied: ({ id, operatorId, incidentId, messageId, evidence, flags, ...outcome }) =>
+    insertEvent({
+      id,
+      runId: `reply-${id}`,
+      userId: operatorId,
+      conversationId: evidence.conversation.id,
+      kind: 'case.replied',
+      data: JSON.stringify({
+        incidentId,
+        messageId,
+        acknowledged: outcome.acknowledged,
+        bankUnreachable: outcome.bankUnreachable,
+        flags: countBy(flags.map((f) => f.kind)),
+        evidenceHash: evidenceHash(evidence),
+      }),
+      createdAt: outcome.createdAt,
     }),
 };

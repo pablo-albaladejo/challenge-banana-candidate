@@ -104,8 +104,8 @@ export type CaseEvidence = {
   accounts: { id: string; label: string }[] | null;
   contacts: { id: string; name?: string }[] | null;
   movements: EvidenceMovement[] | null;
-  /** The closed cases of the same conversation. */
-  previousCases: { id: string; created_at: string }[];
+  /** The closed cases of the same conversation; `closed_at` is `null` for a seeded one. */
+  previousCases: { id: string; created_at: string; closed_at: string | null }[];
   /** `YYYY-MM-DD`: the case's Madrid date, never later than the reference date. */
   caseDate: string;
 };

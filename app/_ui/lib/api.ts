@@ -2,7 +2,7 @@
 export type AnyRecord = Record<string, any>;
 /**
  * Calls `/api/{path}`: GET without a body, POST with JSON; throws the server's `error` as an Error
- * carrying the response `status`.
+ * carrying the response `status` and the whole answer as `body` (a reply's 409 carries `flags`).
  */
 export async function api(path: string, body?: unknown) {
   const response = await fetch(`/api/${path}`, {
@@ -15,6 +15,7 @@ export async function api(path: string, body?: unknown) {
   if (!response.ok)
     throw Object.assign(new Error(result.error || 'The request could not be completed.'), {
       status: response.status,
+      body: result,
     });
   return result;
 }

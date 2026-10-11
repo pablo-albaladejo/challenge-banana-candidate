@@ -91,7 +91,7 @@ describe('buildTimeline', () => {
   it('should open with the earlier closed cases', () => {
     // Arrange
     const evidence = caseEvidenceFactory.build({
-      previousCases: [{ id: 'case-old', created_at: '2026-09-23T16:40:00.000Z' }],
+      previousCases: [{ id: 'case-old', created_at: '2026-09-23T16:40:00.000Z', closed_at: null }],
     });
     // Act
     const timeline = buildTimeline(evidence, [], [], []);
@@ -103,7 +103,7 @@ describe('buildTimeline', () => {
     // Arrange
     const at = '2026-09-23T16:41:00.000Z';
     const evidence = caseEvidenceFactory.build({
-      previousCases: [{ id: 'case-earlier', created_at: at }],
+      previousCases: [{ id: 'case-earlier', created_at: at, closed_at: null }],
       messages: [
         evidenceMessageFactory.build({ id: 'message-b', created_at: at }),
         evidenceMessageFactory.build({ id: 'message-a', created_at: at }),

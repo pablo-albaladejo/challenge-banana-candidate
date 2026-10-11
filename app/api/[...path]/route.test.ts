@@ -962,6 +962,7 @@ describe('GET /api/conversations/:id', () => {
       'content',
       'created_at',
       'run_id',
+      'author_id',
     ]);
     const times = result.body.messages.map((m: any) => m.created_at);
     assert.deepEqual(times, [...times].sort());
@@ -1830,7 +1831,16 @@ describe('GET /api/incidents', () => {
 
   it('should list the support cases newest first with their stored fields', async () => {
     // Arrange
-    const fields = ['conversation_id', 'created_at', 'id', 'status', 'summary', 'user_id'];
+    const fields = [
+      'closed_at',
+      'closed_by',
+      'conversation_id',
+      'created_at',
+      'id',
+      'status',
+      'summary',
+      'user_id',
+    ];
     // Act
     const result = await api('GET', 'incidents', { as: operators.marta });
     // Assert
@@ -1974,6 +1984,224 @@ describe('POST /api/incidents/:id/brief', () => {
     });
     // Assert
     assert.equal(result.status, 404);
+  });
+});
+
+describe('POST /api/incidents/:id/reply', () => {
+  before(startBank);
+  after(stopBank);
+  beforeEach(async () => {
+    seedApp();
+    await resetBank();
+  });
+  const SAFE_REPLY = 'Hello Lucía, a member of our support team has reviewed your case.';
+
+  it('should close the case for an operator and answer the case and the posted message', async () => {
+    // Arrange
+    const body = { content: `  ${SAFE_REPLY}  ` };
+    // Act
+    const result = await api('POST', `incidents/${cases.lucia}/reply`, {
+      as: operators.marta,
+      body,
+    });
+    // Assert
+    assert.equal(result.status, 200);
+    assert.deepEqual(Object.keys(result.body), ['incident', 'message']);
+    assert.equal(result.body.incident.status, 'closed');
+    assert.equal(result.body.incident.closedBy, operators.marta);
+    assert.equal(result.body.message.content, SAFE_REPLY);
+    assert.equal(result.body.message.role, 'operator');
+    assert.equal(result.body.message.author_id, operators.marta);
+    assert.equal(result.body.message.conversation_id, conversations.luciaSupport);
+  });
+
+  it("should show the customer the operator's reply with its author in the conversation", async () => {
+    // Arrange
+    await api('POST', `incidents/${cases.lucia}/reply`, {
+      as: operators.marta,
+      body: { content: SAFE_REPLY },
+    });
+    // Act
+    const result = await api('GET', `conversations/${conversations.luciaSupport}`, {
+      as: customers.lucia,
+    });
+    // Assert
+    const last = result.body.messages.at(-1);
+    assert.deepEqual(
+      [last.role, last.content, last.author_id],
+      ['operator', SAFE_REPLY, operators.marta],
+    );
+  });
+
+  it('should list the case as closed afterwards', async () => {
+    // Arrange
+    await api('POST', `incidents/${cases.lucia}/reply`, {
+      as: operators.marta,
+      body: { content: SAFE_REPLY },
+    });
+    // Act
+    const result = await api('GET', 'incidents', { as: operators.marta });
+    // Assert
+    const closed = result.body.find((c: any) => c.id === cases.lucia);
+    assert.equal(closed.status, 'closed');
+    assert.equal(
+      result.body.filter((c: any) => c.status === 'open').length,
+      counts.cases - counts.closedCases - 1,
+    );
+  });
+
+  it('should reject a customer before reading the body', async () => {
+    // Arrange
+    const body = { unexpected: true };
+    // Act
+    const result = await api('POST', `incidents/${cases.lucia}/reply`, {
+      as: customers.lucia,
+      body,
+    });
+    // Assert
+    assert.equal(result.status, 403);
+    assert.equal(result.body.error, 'Operator role required.');
+  });
+
+  it('should reject a body with an unknown field', async () => {
+    // Arrange
+    const body = { content: SAFE_REPLY, conversationId: conversations.luciaWelcome };
+    // Act
+    const result = await api('POST', `incidents/${cases.lucia}/reply`, {
+      as: operators.marta,
+      body,
+    });
+    // Assert
+    assert.equal(result.status, 400);
+    assert.equal(result.body.error, 'Invalid request data.');
+  });
+
+  it('should reject a reply that is only blank space', async () => {
+    // Arrange
+    const body = { content: '   ' };
+    // Act
+    const result = await api('POST', `incidents/${cases.lucia}/reply`, {
+      as: operators.marta,
+      body,
+    });
+    // Assert
+    assert.equal(result.status, 400);
+  });
+
+  it('should reject a reply longer than 2000 characters', async () => {
+    // Arrange
+    const body = { content: 'a'.repeat(2001) };
+    // Act
+    const result = await api('POST', `incidents/${cases.lucia}/reply`, {
+      as: operators.marta,
+      body,
+    });
+    // Assert
+    assert.equal(result.status, 400);
+  });
+
+  it('should answer unverified statements with 409 and their flags, and keep the case open', async () => {
+    // Arrange
+    const body = { content: 'Hello Lucía, the transfer of EUR 90 was completed.' };
+    // Act
+    const result = await api('POST', `incidents/${cases.lucia}/reply`, {
+      as: operators.marta,
+      body,
+    });
+    // Assert
+    assert.equal(result.status, 409);
+    assert.deepEqual(Object.keys(result.body), ['error', 'flags']);
+    assert.equal(result.body.error, 'The reply contains statements that could not be verified.');
+    assert.deepEqual(
+      result.body.flags.map((f: any) => [f.kind, f.found]),
+      [['amount', 'EUR 90']],
+    );
+    const list = await api('GET', 'incidents', { as: operators.marta });
+    assert.equal(list.body.find((c: any) => c.id === cases.lucia).status, 'open');
+  });
+
+  it('should close the case when the operator acknowledges the flags', async () => {
+    // Arrange
+    const body = {
+      content: 'Hello Lucía, the transfer of EUR 90 was completed.',
+      acknowledgeUnverified: true,
+    };
+    // Act
+    const result = await api('POST', `incidents/${cases.lucia}/reply`, {
+      as: operators.marta,
+      body,
+    });
+    // Assert
+    assert.equal(result.status, 200);
+    assert.equal(result.body.incident.status, 'closed');
+  });
+
+  it('should answer a conflict without flags on a case that is already closed', async () => {
+    // Arrange
+    await api('POST', `incidents/${cases.lucia}/reply`, {
+      as: operators.marta,
+      body: { content: SAFE_REPLY },
+    });
+    // Act
+    const result = await api('POST', `incidents/${cases.lucia}/reply`, {
+      as: operators.marta,
+      body: { content: SAFE_REPLY },
+    });
+    // Assert
+    assert.equal(result.status, 409);
+    assert.deepEqual(result.body, { error: 'This case is already closed.' });
+  });
+
+  it('should refuse a reply that still holds a check placeholder', async () => {
+    // Arrange
+    const body = {
+      content: 'The transfer of [check: amount] was completed.',
+      acknowledgeUnverified: true,
+    };
+    // Act
+    const result = await api('POST', `incidents/${cases.lucia}/reply`, {
+      as: operators.marta,
+      body,
+    });
+    // Assert
+    assert.equal(result.status, 400);
+    assert.deepEqual(result.body, {
+      error: 'Replace every [check: …] placeholder before sending.',
+    });
+  });
+
+  it('should report an unknown case as not found', async () => {
+    // Arrange
+    const body = { content: SAFE_REPLY };
+    // Act
+    const result = await api('POST', `incidents/${unknown.case}/reply`, {
+      as: operators.marta,
+      body,
+    });
+    // Assert
+    assert.equal(result.status, 404);
+    assert.equal(result.body.error, 'Case not found.');
+  });
+
+  it('should say the bank could not be reached when the reply could not be checked', async () => {
+    // Arrange
+    const body = { content: 'Hello Lucía, the transfer of EUR 85.00 was completed.' };
+    await stopBank();
+    // Act
+    let result;
+    try {
+      result = await api('POST', `incidents/${cases.lucia}/reply`, { as: operators.marta, body });
+    } finally {
+      await startBank();
+    }
+    // Assert
+    assert.equal(result.status, 409);
+    assert.equal(
+      result.body.error,
+      'The bank could not be reached, so amounts, references and statuses in the reply could not be checked.',
+    );
+    assert.equal(result.body.bankUnreachable, true);
+    assert.ok(result.body.flags.length > 0);
   });
 });
 

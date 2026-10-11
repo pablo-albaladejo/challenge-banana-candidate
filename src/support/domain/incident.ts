@@ -8,6 +8,9 @@ export type IncidentRow = {
   summary: string;
   status: string;
   created_at: string;
+  /** When and by which operator the case was closed; `null` while open and for seeded closed cases. */
+  closed_at: string | null;
+  closed_by: string | null;
 };
 export type NewIncident = {
   id: string;
@@ -19,6 +22,8 @@ export type NewIncident = {
 };
 /** The status of a case still waiting for a person. */
 export const OPEN = 'open';
+/** The status of a case the operator answered and closed. */
+export const CLOSED = 'closed';
 /** Only an operator reads a case; a customer or an unknown person is refused. */
 export function requireOperator(person: Pick<Person, 'role'> | undefined): void {
   if (person?.role !== 'operator') throw new ForbiddenError('Operator role required.');

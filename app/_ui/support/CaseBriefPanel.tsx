@@ -54,6 +54,14 @@ const FLAG: Record<string, string> = {
   retry_advice: '⛔',
   unlinked_operation: '⛔',
 };
+/** What a send-time flag means, for the operator who must acknowledge it. */
+const FLAG_KIND: Record<string, string> = {
+  amount: 'an amount no verified fact backs',
+  reference: 'a reference no verified fact backs',
+  status: 'a transfer status no verified fact backs',
+  ambiguous_status: 'a status that can be read both ways',
+  commitment: 'a commitment (refund, reversal, waiver, retry, deadline)',
+};
 const words = (reason: string) => reason.replaceAll('_', ' ');
 const citations = (evidence: AnyRecord[]) => evidence.map((e) => e.citation).join(' · ');
 
@@ -89,11 +97,26 @@ export function CaseBriefPanel({
   brief,
   busy,
   onGenerate,
+  reply,
 }: {
   brief: AnyRecord | null;
   busy: boolean;
   onGenerate: () => void;
+  /** Send and close (Part 2 commit 5): the editable reply and its send-time recheck. */
+  reply: {
+    draft: string;
+    /** The flags of the last 409 recheck, with its sentence; `null` before a refused send. */
+    refused: { error: string; flags: AnyRecord[] } | null;
+    acknowledged: boolean;
+    sending: boolean;
+    /** The case is closed: the brief is a read-only review and nothing can be sent. */
+    closed: boolean;
+    onDraftChange: (text: string) => void;
+    onAcknowledgeChange: (acknowledged: boolean) => void;
+    onSend: () => void;
+  };
 }) {
+  const placeholder = reply.draft.includes('[check:');
   const statements = brief
     ? brief.facts.filter(
         (f: AnyRecord, i: number) =>
@@ -191,6 +214,63 @@ export function CaseBriefPanel({
           </ol>
           <h4>Reply to customer (template)</h4>
           <pre className="brief-reply">{brief.templateReply}</pre>
+          {reply.closed ? (
+            <p className="muted">This case is closed: the brief is a read-only review.</p>
+          ) : (
+            <div className="brief-send">
+              <h4>
+                <label htmlFor="brief-draft">Reply to send</label>
+              </h4>
+              <textarea
+                id="brief-draft"
+                value={reply.draft}
+                rows={7}
+                onChange={(e) => reply.onDraftChange(e.target.value)}
+              />
+              <small>
+                The customer sees it signed with your first name. Amounts, references, statuses and
+                promises are checked again against the bank when you send.
+              </small>
+              {placeholder && (
+                <p className="brief-send-warning" role="alert">
+                  Replace every [check: …] placeholder before sending.
+                </p>
+              )}
+              {reply.refused && (
+                <div className="brief-send-warning" role="alert">
+                  <p>⚠ {reply.refused.error}</p>
+                  <ul role="list">
+                    {reply.refused.flags.map((f: AnyRecord, i: number) => (
+                      <li key={`${f.start}-${i}`}>
+                        “{f.found}” — {FLAG_KIND[f.kind] ?? words(f.kind)}
+                      </li>
+                    ))}
+                  </ul>
+                  <label className="brief-send-ack">
+                    <input
+                      type="checkbox"
+                      checked={reply.acknowledged}
+                      onChange={(e) => reply.onAcknowledgeChange(e.target.checked)}
+                    />
+                    I have checked these statements and take responsibility for them
+                  </label>
+                </div>
+              )}
+              <button
+                type="button"
+                className="primary-button"
+                disabled={
+                  reply.sending ||
+                  !reply.draft.trim() ||
+                  placeholder ||
+                  (reply.refused !== null && !reply.acknowledged)
+                }
+                onClick={reply.onSend}
+              >
+                {reply.sending ? 'Sending…' : 'Send and close'}
+              </button>
+            </div>
+          )}
         </>
       )}
     </section>

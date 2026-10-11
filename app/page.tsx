@@ -34,6 +34,10 @@ export default function Home() {
   const [selectedCase, setSelectedCase] = useState<AnyRecord | null>(null),
     [brief, setBrief] = useState<AnyRecord | null>(null),
     [briefsBusy, setBriefsBusy] = useState<ReadonlySet<string>>(new Set()),
+    [draft, setDraft] = useState(''),
+    [refused, setRefused] = useState<{ error: string; flags: AnyRecord[] } | null>(null),
+    [acknowledged, setAcknowledged] = useState(false),
+    [sendingFor, setSendingFor] = useState<string | null>(null),
     [from, setFrom] = useState(''),
     [to, setTo] = useState(''),
     [amount, setAmount] = useState(''),
@@ -60,6 +64,9 @@ export default function Home() {
     setSelectedCase(null);
     openCaseId.current = null;
     setBrief(null);
+    setDraft('');
+    setRefused(null);
+    setAcknowledged(false);
     setDocument(null);
     setDocs([]);
     setSources(null);
@@ -266,6 +273,9 @@ export default function Home() {
     const g = generation.current;
     openCaseId.current = id;
     setBrief(null);
+    setDraft('');
+    setRefused(null);
+    setAcknowledged(false);
     try {
       const d = await api(`incidents/${id}`);
       if (g === generation.current) setSelectedCase(d);
@@ -286,7 +296,12 @@ export default function Home() {
     const stillOpen = () => g === generation.current && openCaseId.current === id;
     try {
       const b = await api(`incidents/${id}/brief`, {});
-      if (stillOpen()) setBrief(b);
+      if (stillOpen()) {
+        setBrief(b);
+        setDraft(b.prose?.draftReply ?? b.templateReply ?? '');
+        setRefused(null);
+        setAcknowledged(false);
+      }
     } catch (e) {
       if (stillOpen()) setError((e as Error).message);
     } finally {
@@ -295,6 +310,46 @@ export default function Home() {
         next.delete(id);
         return next;
       });
+    }
+  }
+  /** Any edit invalidates a refusal and its acknowledgment: the server rechecks what is sent. */
+  function changeDraft(value: string) {
+    setDraft(value);
+    setRefused(null);
+    setAcknowledged(false);
+  }
+  /**
+   * Sends the edited reply to the customer and closes the case. Unverified statements come back as a
+   * refusal with their flags; sending again needs the operator's acknowledgment.
+   */
+  async function sendReply() {
+    const g = generation.current;
+    const id = selectedCase?.incident.id;
+    if (!id) return;
+    setSendingFor(id);
+    setError('');
+    const stillOpen = () => g === generation.current && openCaseId.current === id;
+    try {
+      await api(`incidents/${id}/reply`, {
+        content: draft,
+        ...(acknowledged ? { acknowledgeUnverified: true } : {}),
+      });
+      if (!stillOpen()) return;
+      setRefused(null);
+      setAcknowledged(false);
+      setNotice('Reply sent. The case is closed.');
+      const d = await api(`incidents/${id}`);
+      if (stillOpen()) setSelectedCase(d);
+      await refresh(g);
+    } catch (e) {
+      if (!stillOpen()) return;
+      const body = (e as Error & { body?: AnyRecord }).body;
+      if (Array.isArray(body?.flags)) {
+        setRefused({ error: body.error, flags: body.flags });
+        setAcknowledged(false);
+      } else setError((e as Error).message);
+    } finally {
+      setSendingFor((sending) => (sending === id ? null : sending));
     }
   }
   async function updateIndex() {
@@ -381,6 +436,7 @@ export default function Home() {
               {tab === 'chat' && !operator && (
                 <ChatPanel
                   current={current}
+                  people={people}
                   conversations={conversations}
                   conversationId={conversationId}
                   messages={messages}
@@ -425,6 +481,16 @@ export default function Home() {
                   brief={brief}
                   briefBusy={briefsBusy.has(selectedCase?.incident.id)}
                   onGenerateBrief={generateBrief}
+                  reply={{
+                    draft,
+                    refused,
+                    acknowledged,
+                    sending: sendingFor !== null && sendingFor === selectedCase?.incident.id,
+                    closed: selectedCase?.incident.status === 'closed',
+                    onDraftChange: changeDraft,
+                    onAcknowledgeChange: setAcknowledged,
+                    onSend: sendReply,
+                  }}
                 />
               )}
               {tab === 'documents' && (

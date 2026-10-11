@@ -108,7 +108,10 @@ describe('migrate', () => {
     // Assert
     assert.equal(version(db), migrations.length);
     assert.deepEqual(db.prepare('SELECT * FROM conversations').all(), before.conversations);
-    assert.deepEqual(db.prepare('SELECT * FROM messages').all(), before.messages);
+    assert.deepEqual(
+      db.prepare('SELECT * FROM messages').all(),
+      before.messages.map((row) => ({ ...(row as object), author_id: null })),
+    );
   });
   it('should add the dispatch time to the intents of an upgraded database without losing them', () => {
     // Arrange
@@ -158,6 +161,29 @@ describe('migrate', () => {
     assert.deepEqual(
       db.prepare('SELECT * FROM approvals').all(),
       before.map((row) => ({ ...row, checks: null })),
+    );
+  });
+  it('should add the closing of a case to the incidents of an upgraded database without losing them', () => {
+    // Arrange
+    const db = open();
+    db.exec(legacySchema);
+    db.prepare(
+      'INSERT INTO incidents(id,user_id,conversation_id,summary,status,created_at) VALUES(?,?,?,?,?,?)',
+    ).run(
+      `case-${faker.string.uuid()}`,
+      customers.lucia,
+      `conv-${faker.string.uuid()}`,
+      faker.lorem.sentence(),
+      'closed',
+      new Date().toISOString(),
+    );
+    const before = db.prepare('SELECT * FROM incidents').all() as Record<string, unknown>[];
+    // Act
+    migrate(db);
+    // Assert
+    assert.deepEqual(
+      db.prepare('SELECT * FROM incidents').all(),
+      before.map((row) => ({ ...row, closed_at: null, closed_by: null })),
     );
   });
   it('should leave an up-to-date database unchanged when it runs again', () => {

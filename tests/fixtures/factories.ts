@@ -207,7 +207,8 @@ export const messageFactory = new Factory<NewMessage>()
   .attr('role', 'user')
   .attr('content', () => faker.lorem.sentence())
   .attr('createdAt', () => new Date().toISOString())
-  .attr('runId', () => `run-${faker.string.uuid()}`);
+  .attr('runId', () => `run-${faker.string.uuid()}`)
+  .attr('authorId', null);
 
 /** An agent run that just started in lucia's welcome conversation. */
 export const runFactory = new Factory<NewRun>()

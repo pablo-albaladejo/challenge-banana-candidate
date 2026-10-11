@@ -4,6 +4,7 @@ import { appDb } from '../../platform/db/db';
 import { insertConversation } from './sqlite-conversations.repo';
 import { insertMessage, messagesIn } from './sqlite-messages.repo';
 import { conversationFactory, messageFactory } from '../../../tests/fixtures/factories';
+import { operators } from '../../../tests/fixtures/world';
 
 describe('messages repository', () => {
   beforeEach(() => appDb().exec('DELETE FROM messages; DELETE FROM conversations'));
@@ -23,8 +24,27 @@ describe('messages repository', () => {
         content: message.content,
         created_at: message.createdAt,
         run_id: message.runId,
+        author_id: null,
       },
     ]);
+  });
+  it('should read back the operator who wrote a support message', () => {
+    // Arrange
+    const conversation = conversationFactory.build();
+    insertConversation(conversation);
+    const message = messageFactory.build({
+      conversationId: conversation.id,
+      role: 'operator',
+      runId: null,
+      authorId: operators.marta,
+    });
+    // Act
+    insertMessage(message);
+    // Assert
+    const [stored] = messagesIn(conversation.id);
+    assert.equal(stored.role, 'operator');
+    assert.equal(stored.author_id, operators.marta);
+    assert.equal(stored.run_id, null);
   });
   it('should list messages in time order and keep insertion order for equal times', () => {
     // Arrange

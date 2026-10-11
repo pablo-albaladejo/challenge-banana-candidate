@@ -3,6 +3,8 @@
 import { appDb } from '../../src/platform/db/db';
 import type { IntentRow } from '../../src/transfers/domain/intent';
 import type { EventRow } from '../../src/platform/telemetry/events.repo';
+import type { IncidentRow } from '../../src/support/domain/incident';
+import type { MessageRow } from '../../src/conversations/domain/conversation';
 
 export type RunRow = {
   user_id: string;
@@ -45,3 +47,13 @@ export const eventsFor = (runId: string) =>
       .prepare('SELECT kind,user_id,data FROM events WHERE run_id=? ORDER BY rowid')
       .all(runId) as Pick<EventRow, 'kind' | 'user_id' | 'data'>[]
   ).map((e) => ({ kind: e.kind, userId: e.user_id, data: JSON.parse(e.data) }));
+
+/** A support case as stored, closing columns included. */
+export const incidentRow = (id: string) =>
+  appDb().prepare('SELECT * FROM incidents WHERE id=?').get(id) as IncidentRow | undefined;
+
+/** Every message of a conversation in time order, as stored (`author_id` included). */
+export const conversationMessages = (conversationId: string) =>
+  appDb()
+    .prepare('SELECT * FROM messages WHERE conversation_id=? ORDER BY created_at,rowid')
+    .all(conversationId) as MessageRow[];

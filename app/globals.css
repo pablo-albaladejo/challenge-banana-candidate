@@ -696,6 +696,16 @@ footer span:last-child {
 .user .bubble small {
   color: #b2c7bb;
 }
+.operator .bubble {
+  background: #fff7e0;
+  border: 1px solid #f1e2b4;
+}
+.message-author {
+  display: block;
+  font-size: 10px;
+  margin-bottom: 6px;
+  color: var(--forest);
+}
 .composer {
   border: 1px solid #e2e9dc;
   border-radius: 10px;
@@ -1105,6 +1115,35 @@ label select {
 }
 .brief-timeline li span {
   overflow-wrap: anywhere;
+}
+.brief-send textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--font);
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  resize: vertical;
+}
+.brief-send .primary-button {
+  margin-top: 10px;
+}
+.brief-send-warning {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--danger);
+}
+.brief-send-warning p {
+  margin: 0 0 6px;
+}
+.brief-send-ack {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+  color: var(--ink);
 }
 .brief-reply {
   white-space: pre-wrap;

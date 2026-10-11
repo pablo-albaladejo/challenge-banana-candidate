@@ -27,6 +27,15 @@ export const migrations: Migration[] = [
   // 3: the pre-flight checks shown with a proposal (JSON), persisted so the card and the model
   // always see the same checks. Nullable: approvals created before it read as no checks.
   (db) => db.exec('ALTER TABLE approvals ADD COLUMN checks TEXT'),
+  // 4: closing a case with the operator's reply (Part 2 §5): when and by whom a case was closed,
+  // and who wrote a message (`operator` messages). Nullable: the seeded closed cases and every
+  // earlier message keep NULL.
+  (db) =>
+    db.exec(`
+      ALTER TABLE incidents ADD COLUMN closed_at TEXT;
+      ALTER TABLE incidents ADD COLUMN closed_by TEXT;
+      ALTER TABLE messages ADD COLUMN author_id TEXT;
+    `),
 ];
 /**
  * Applies the pending migrations in order, each in its own IMMEDIATE transaction that re-reads

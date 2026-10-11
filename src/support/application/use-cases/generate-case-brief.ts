@@ -49,7 +49,10 @@ export const makeGenerateCaseBrief =
       facts,
       findings,
       procedures: selectProcedures(findings, procedures.procedures(), evidence.caseDate),
-      previousCases: evidence.previousCases.map(({ id }) => ({ id, closedAt: null })),
+      previousCases: evidence.previousCases.map(({ id, closed_at }) => ({
+        id,
+        closedAt: closed_at,
+      })),
       prose: null,
       templateReply: templateReply(evidence.customer.name.split(' ')[0], facts, verdicts, findings),
       promptVersion: PROMPT_VERSION,

@@ -375,3 +375,41 @@ describe('Host allowlist', () => {
     expect(reboundApi.status).toBe(421);
   });
 });
+// Last on purpose: closing case-lucia changes the inbox counts the journeys above assert.
+describe('Operator reply', () => {
+  it('should send the reply the operator acknowledged, close the case and show it to the customer', async ({
+    page,
+  }) => {
+    // Arrange
+    await openAs(page, 'Marta Sanz · Operator');
+    const openCount = Number(await page.locator('.case-count strong').textContent());
+    const dinnerCase = page
+      .locator('.case-item')
+      .filter({ hasText: 'Could someone check the dinner payment with Bruno' });
+    await dinnerCase.click();
+    const brief = page.getByRole('region', { name: 'Verified brief' });
+    await brief.getByRole('button', { name: 'Generate brief' }).click();
+    const draft = brief.getByLabel('Reply to send');
+    await expect(draft).toHaveValue(/already been completed/);
+    await draft.fill(`${await draft.inputValue()}\nWe will refund EUR 90 today.`);
+    await brief.getByRole('button', { name: 'Send and close' }).click();
+    await expect(brief.getByRole('alert')).toContainText('EUR 90');
+    await brief
+      .getByLabel('I have checked these statements and take responsibility for them')
+      .check();
+    // Act
+    await brief.getByRole('button', { name: 'Send and close' }).click();
+    // Assert
+    await expect(page.getByRole('status')).toContainText('Reply sent. The case is closed.');
+    await expect(page.locator('.case-count strong')).toHaveText(String(openCount - 1));
+    await expect(dinnerCase).toContainText('Resolved');
+    await openAs(page, 'Lucía Martín');
+    await page
+      .locator('.conversation-list')
+      .getByRole('button', { name: 'Dinner payment' })
+      .click();
+    const support = page.locator('.message.operator');
+    await expect(support).toContainText('Banana Bank support · Marta');
+    await expect(support).toContainText('We will refund EUR 90 today.');
+  });
+});

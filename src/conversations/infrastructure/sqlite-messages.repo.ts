@@ -3,8 +3,8 @@ import type { MessageRow, NewMessage } from '../domain/conversation';
 import type { MessageRepository } from '../application/ports/message-repository';
 export function insertMessage(m: NewMessage) {
   statement(
-    'INSERT INTO messages(id,conversation_id,role,content,created_at,run_id) VALUES(?,?,?,?,?,?)',
-  ).run(m.id, m.conversationId, m.role, m.content, m.createdAt, m.runId);
+    'INSERT INTO messages(id,conversation_id,role,content,created_at,run_id,author_id) VALUES(?,?,?,?,?,?,?)',
+  ).run(m.id, m.conversationId, m.role, m.content, m.createdAt, m.runId, m.authorId ?? null);
 }
 /** A conversation's messages in time order; equal times keep insertion order. */
 export function messagesIn(conversationId: string) {

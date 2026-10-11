@@ -7,7 +7,7 @@ import { currentSession, listPeople, personaSwitcherEnabled, selectPerson } from
 import { dashboard } from '../accounts';
 import { conversationDetail, createConversation, listConversations } from '../conversations';
 import { confirmApproval } from '../transfers';
-import { generateBrief, incidentDetail, listIncidents } from '../support';
+import { generateBrief, incidentDetail, listIncidents, replyAndClose } from '../support';
 import { postMessage, previewAnswer, runAction } from '../assistant';
 import { documentChunks, documentDetail, listDocuments, runIngestion, search } from '../knowledge';
 /**
@@ -31,6 +31,7 @@ export const routes: Route<Handler>[] = [
   { method: 'GET', pattern: 'incidents', handler: listIncidents },
   { method: 'GET', pattern: 'incidents/:id', handler: incidentDetail },
   { method: 'POST', pattern: 'incidents/:id/brief', handler: generateBrief },
+  { method: 'POST', pattern: 'incidents/:id/reply', handler: replyAndClose },
   { method: 'GET', pattern: 'documents', handler: listDocuments },
   { method: 'GET', pattern: 'documents/:id/chunks', handler: documentChunks },
   { method: 'GET', pattern: 'documents/:id', handler: documentDetail },

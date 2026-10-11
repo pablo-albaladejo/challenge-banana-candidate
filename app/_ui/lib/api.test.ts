@@ -22,4 +22,12 @@ describe('api', () => {
     // Act & Assert
     await assert.rejects(api('people'), { message: 'Route not found.', status: 404 });
   });
+
+  it("should carry the server's whole answer on a rejection, so the page can show its details", async (t) => {
+    // Arrange
+    const body = { error: 'The reply contains statements that could not be verified.', flags: [] };
+    answer(t, 409, body);
+    // Act & Assert
+    await assert.rejects(api('incidents/x/reply', { content: 'Hi' }), { status: 409, body });
+  });
 });

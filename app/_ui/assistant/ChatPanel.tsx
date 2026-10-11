@@ -3,8 +3,14 @@ import type { Person } from '../../../src/types';
 import type { AnyRecord } from '../lib/api';
 import { date } from '../lib/format';
 import { Icon } from '../shell/Icon';
+/** How the customer sees who signed a support reply: the operator's first name, when known. */
+function supportSignature(people: Person[], authorId: unknown) {
+  const name = people.find((p) => p.id === authorId)?.name;
+  return name ? `Banana Bank support · ${name.split(' ')[0]}` : 'Banana Bank support';
+}
 export function ChatPanel({
   current,
+  people,
   conversations,
   conversationId,
   messages,
@@ -17,6 +23,8 @@ export function ChatPanel({
   onTextChange,
 }: {
   current: Person;
+  /** Resolves the operator who signed a support reply (`author_id`) to a first name. */
+  people: Person[];
   conversations: AnyRecord[];
   conversationId: string | null;
   messages: AnyRecord[];
@@ -91,7 +99,17 @@ export function ChatPanel({
           {messages.map((m, i) => (
             <div className={`message ${m.role}`} key={m.id || i}>
               {m.role === 'assistant' && <span className="message-avatar">✧</span>}
+              {m.role === 'operator' && (
+                <span className="message-avatar" aria-hidden="true">
+                  👤
+                </span>
+              )}
               <div className="bubble">
+                {m.role === 'operator' && (
+                  <strong className="message-author">
+                    {supportSignature(people, m.author_id)}
+                  </strong>
+                )}
                 <div>
                   {String(m.content)
                     .split(/(\*\*[^*]+\*\*)/g)
