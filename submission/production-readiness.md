@@ -1,6 +1,6 @@
 # Production readiness review
 
-> File paths in this review predate the Phase 6 folder move; the old → new mapping is in [`architecture-decoupling.md` §9](architecture-decoupling.md#9-phase-6--screaming-folders-2026-10-10).
+> File paths in this review predate the Phase 6 folder move; the old → new mapping is in [`architecture-decoupling.md` §9](architecture-decoupling.md#9-phase-6--screaming-folders-2026-10-10). Findings added or revised after Phase 7d.4 (P0-5, P0-7, P1-5, P2-4, P2-13 to P2-15) cite the current paths under `src/identity/`, `src/platform/` and `src/server/`. Where a path is still `src/banking/*`, `src/agent/*` or `src/retrieval/*`, it is the starter-era location of the evidence, kept as history.
 
 Date: 2026-10-09. Scope: the application side (`app/`, `src/`, `scripts/`, `next.config.ts`, `.env.example`), reviewed against `docs/challenge.md` and `docs/contracts.md`, after the Part 1 bug fixes were merged. `simulator/` is an external dependency and was only read, never changed.
 
@@ -103,16 +103,16 @@ A secondary cause: configuration, health and logging were built for local develo
 ### P0-5. DNS rebinding turns any website the user visits into a full app client
 
 - **Category:** A01 / A05. HIGH if the threat model includes the browser of the person running the app; MEDIUM otherwise.
-- **Evidence:** `src/auth.ts` `sameOrigin` compares `Origin` with `Host`; `scripts/dev.ts` binds `127.0.0.1`; there is no `Host` allowlist.
+- **Evidence:** `sameOrigin` (`src/identity/entry-points/http/session-guard.ts:24-36`) compares `Origin` with `Host`; `scripts/dev.ts` binds `127.0.0.1`; there is no `Host` allowlist.
 - **Exploit:** a page on `evil.test:3000` re-resolves its name to `127.0.0.1`. The browser sends `Origin: http://evil.test:3000`, `Host: evil.test:3000`, `Sec-Fetch-Site: same-origin`, so `sameOrigin` passes. The attacker's script can then:
   1. `POST /api/session {userId: "lucia"}` and get its own cookie for `evil.test`.
   2. `POST /api/actions transfer_money` followed by `POST /api/approvals/:id/confirm`: money moves with no user action.
   3. Switch to an operator and read every case, conversation and event.
   4. Loop on messages to burn the OpenAI quota.
-- **Why it is in scope:** the open user selector is out of scope by design ("anyone who can reach the port can be anyone"). Rebinding extends "anyone on this machine" to "any website you open", which is not by design.
+- **Why it is in scope:** the open user selector is out of scope for the demo by design ("anyone who can reach the port can be anyone", see P0-7 for what a real launch needs). Rebinding extends "anyone on this machine" to "any website you open", which is not by design.
 - **Fix:**
   ```ts
-  // src/auth.ts
+  // src/identity/entry-points/http/session-guard.ts (or src/platform/http/)
   const allowedHosts = new Set(
     (process.env.APP_HOSTS || `127.0.0.1:${config.appPort},localhost:${config.appPort}`).split(','),
   );
@@ -120,7 +120,7 @@ A secondary cause: configuration, health and logging were built for local develo
     if (!allowedHosts.has(request.headers.get('host') || ''))
       throw new HttpError(421, 'Unknown host.');
   }
-  // route.ts: first line of the handler, for every method (GET too: rebinding can read).
+  // src/server/handle.ts: first line of `handle`, for every method (GET too: rebinding can read).
   ```
 - **Effort:** S. **Testable:** yes (route test with a foreign `Host` header gives 421).
 
@@ -135,6 +135,22 @@ A secondary cause: configuration, health and logging were built for local develo
   - Show the expiry and the originating conversation.
   - Add a busy/disabled state to the confirm button.
 - **Effort:** S. **Testable:** yes (Playwright: the contact name is visible on the card).
+
+### P0-7. Anyone who can reach the port can become any person, operators included
+
+- **Category:** A01 broken access control / A07 identification and authentication failures. Found by the Phase 7d.4 security review. **Not introduced by the refactor:** the starter shipped it. P0 for any launch with real customers; accepted for the challenge demo, where `docs/challenge.md` says "the user selector lets you switch between customers and operators without setting up authentication".
+- **Evidence:**
+  - `src/server/routes.ts:17`: `POST session` sits in `publicRoutes`, so `handle` answers it before `actor()` runs (`src/server/handle.ts:21-22`).
+  - `src/identity/entry-points/http/session.ts:8-12`: the body is `{userId}` and nothing else. `StartSession` (`src/identity/application/use-cases/start-session.ts:11-14`) only checks that the id is in the roster and issues a token for it. No password, no one-time code, no proof of who is asking.
+  - `src/identity/infrastructure/people-roster.ts:15-16`: `marta` and `pablo` are `operator`s. The role comes from the roster, not from the request, so a client cannot invent a role, but it can pick an operator's id.
+  - `GET /api/people` (`src/server/routes.ts:16`) is public too and lists every id, so nothing needs guessing.
+  - The only gate is `sameOrigin` (see P0-5 and P2-14), which stops other websites, not a direct client.
+- **Failure:** `curl -X POST /api/session -d '{"userId":"pablo"}'` returns a valid operator cookie. That cookie reads every case, conversation and event, and any customer id gives the same access to that customer's accounts and transfers (the approval step still applies, but the attacker is the one approving). In a real launch this is full account takeover for every customer, with no log of who actually did it.
+- **Why it is acceptable for the challenge, and only there:** the app is a demo whose selector is the intended way to review both roles. The bank is simulated and every person is fictional. None of that holds once real people or real money are behind it.
+- **What makes it launch-safe (pick one):**
+  1. **Real authentication (the actual fix).** Replace `POST session` with a login that proves identity (password plus second factor, or an OIDC/SSO provider; operators through the bank's staff IdP with role claims). `StartSession` takes the verified subject instead of a client-supplied id. Pair it with the token redesign in P2-13 (expiry, nonce, server-side revocation, `Secure`). Delete the public `people` listing or restrict it to the signed-in role.
+  2. **Lock the selector down per environment (minimum for a staging or demo host that stays public).** Gate `POST session` and `GET people` behind `DEMO_PERSONA_SWITCHER=1`, default off, and refuse to start with it on when `NODE_ENV=production` (`assertProductionSecrets` in `src/platform/config.ts:30` is the natural place). With it off, `POST session` answers 404 and `actor()` still verifies cookies as today. Even with it on, operators should not be selectable from an unauthenticated page: require a separate `DEMO_OPERATOR_KEY` or leave operator personas out of the public build.
+- **Effort:** option 2 is S; option 1 is L (an identity provider and the account lifecycle around it, not a code tweak). **Testable:** yes. Option 2: with the flag off, `POST /api/session` returns 404 and `GET /api/people` returns 404; with `NODE_ENV=production` and the flag on, startup throws. Option 1: a request with a valid id and no credential gets 401, and a stolen operator cookie stops working after revocation.
 
 ---
 
@@ -170,24 +186,22 @@ A secondary cause: configuration, health and logging were built for local develo
 
 ### P1-5. Default secrets silently used in production
 
-- **Category:** A02 / A05. Found by both reviews.
-- **Evidence:** `src/config.ts:11-13` falls back to the public `banana-local-*` values. The session token is `userId.HMAC(userId)` with no expiry, and the cookie has no `Secure` flag (`route.ts:46`).
+- **Category:** A02 / A05. Found by both reviews, then re-checked by the Phase 7d.4 review.
+- **Status: partly done.** `assertProductionSecrets(config, nodeEnv)` exists and is tested (`src/platform/config.ts:30-44`, `src/platform/config.test.ts:101`): in production it rejects an unset or shorter-than-32-character `BANK_SERVICE_SECRET`, `BANK_ADMIN_SECRET` and `SESSION_SECRET`. **Nothing calls it.** The only references are the definition and its test, so it protects nothing at startup. Not introduced by the refactor.
+- **Evidence:**
+  - `src/platform/config.ts:14-16`: all three secrets fall back to the public values `banana-local-service`, `banana-local-admin` and `banana-local-session` when the variable is unset or empty. `.env.example:20-22` ships the same three values.
+  - `config` is built at import (`src/platform/config.ts:27`) and never validated, so a production process with no environment starts, signs bank calls and issues sessions with the public values.
+  - The session cookie has no `Secure` flag (`src/identity/entry-points/http/session.ts:11`; pinned as intended by `app/api/[...path]/route.test.ts:285`). The token weaknesses are in P2-13.
 - **Failure:**
-  - Without `SESSION_SECRET`, anyone can forge `pablo.<hmac>` and become an operator (moot today because `/api/session` is open by design).
+  - Without `SESSION_SECRET`, anyone can compute `pablo.<hmac>` with the public secret and become an operator, without even calling `POST session`. P0-7 is the cheaper way in today, but fixing P0-7 leaves this forgery open.
   - Without `BANK_SERVICE_SECRET` on both sides, any local process can sign bank requests as any actor, including the operator endpoint, and skip the approval flow.
+  - Without `BANK_ADMIN_SECRET`, the public value is the bearer token for the bank's admin endpoints (`scripts/scenario.ts:11` sends it as `Authorization: Bearer`).
   - If only the bank has a real secret, the app returns 401 on everything with no explanation.
 - **Fix:**
-  ```ts
-  function secret(name: string, dev: string) {
-    const v = process.env[name];
-    if (!v && process.env.NODE_ENV === 'production') throw new Error(`${name} must be set`);
-    if (v && v.length < 32 && process.env.NODE_ENV === 'production')
-      throw new Error(`${name} too short`);
-    return v || dev;
-  }
-  ```
-  Add `Secure` when served over HTTPS. Move `adminSecret` out of the app's runtime config: only `scripts/scenario.ts` uses it.
-- **Effort:** S. **Testable:** yes, after exposing a `loadConfig(env)` factory (see P2-4).
+  - Call `assertProductionSecrets(config, process.env.NODE_ENV)` once at server start (`next.config.ts` or an `instrumentation.ts` register hook, and `scripts/dev.ts` for the bank), so the process refuses to boot with a default or short secret. Also reject the three known default strings, not only short values: `banana-local-service` is 20 characters, but a padded copy would pass the length check.
+  - Add `Secure` to the cookie when the request is served over HTTPS, or always in production.
+  - Move `adminSecret` out of the app's runtime config: only `scripts/scenario.ts` and the tests use it.
+- **Effort:** S. **Testable:** yes. `assertProductionSecrets` is already pure; add a test that the startup path calls it, and one for the default-string rejection.
 
 ### P1-6. No rate or cost limits
 
@@ -248,7 +262,7 @@ Missing: `intents(user_id, status)`, `intents(conversation_id)`, `approvals(inte
 
 ### P2-4. Configuration is read at import time
 
-`src/config.ts` runs dotenv relative to the cwd at import, and tests mutate `config.bankUrl` (`tests/support/network.ts`). Fix: export a `loadConfig(env)` factory; this also enables the P1-5 test. Effort S.
+`src/platform/config.ts` runs dotenv relative to the cwd at import (lines 3-4), and tests mutate `config.bankUrl` (`tests/support/network.ts`). **Partly done:** the pure `loadConfig(env)` factory (line 7) and `assertProductionSecrets` (line 30) now exist; `config` stays a mutable import-time singleton by design, and the P1-5 startup call is still missing. Effort S.
 
 ### P2-5. Retrieval cost
 
@@ -282,15 +296,34 @@ Excerpts and concepts are labelled as data and the approval gate stops money mov
 
 `src/operator/view.ts` calls `reconcileIntent(incident.user_id, …)`, signing `GET /v1/operations` as the customer, which sidesteps "the actor comes from the selected server session". Read-only, low impact. Fix: reconcile through `/v1/operator/customer` as the operator, or report "pending verification". Effort S.
 
-### P2-13. Session tokens never expire or rotate (out of scope by design)
+### P2-13. Session tokens never expire, never rotate and cannot be revoked (out of scope while the selector is open)
 
-`src/auth.ts`: the token is deterministic (`userId.HMAC(userId)`), with no `Max-Age` and no `Secure`. Out of scope while the selector has no authentication, but critical the moment real login exists. Sketch: `userId.iat.nonce.hmac(userId|iat|nonce)`, TTL check, a server-side session table for revocation, `Secure` over HTTPS.
+Found by the Phase 7d.4 security review; all of it already existed in the starter. Out of scope while the selector has no authentication (P0-7), but it becomes critical together with P0-7 the moment real login exists, so the two ship as one change.
+
+- **Evidence:**
+  - **No expiry.** `src/identity/entry-points/http/session.ts:11` sets `banana_actor=<token>; Path=/; HttpOnly; SameSite=Strict`: no `Max-Age` or `Expires`, so it is a browser-session cookie. The token itself carries no expiry either, and `verify` (`src/identity/infrastructure/hmac-session-tokens.ts:12-15`) checks only the signature. There is no server-side session table, so there is nothing to revoke. Rotating `SESSION_SECRET` is the only way to end sessions, and it ends all of them.
+  - **Deterministic token.** `issue` returns `id.hex(HMAC-SHA256(id, secret))` (`hmac-session-tokens.ts:11`) with no nonce or issue time. The same person always gets the same token, so a leaked cookie (a log line, a proxy, shared screenshot, malware) is valid forever and cannot be told apart from a fresh one. A logout cannot invalidate it.
+  - **No `Secure` flag** (`session.ts:11`). Over plain HTTP the cookie travels in the clear. `HttpOnly`, `SameSite=Strict` and `Path=/` are set correctly.
+- **Failure:** a stolen cookie is a permanent credential for that person, and for an operator it is permanent access to every case. Combined with P1-5, a default `SESSION_SECRET` makes the token forgeable offline.
+- **Fix:** `id.iat.nonce.hmac(id|iat|nonce)`, a TTL check in `verify` (for example 8 h for customers, 1 h for operators), a server-side `sessions` table keyed by the nonce so logout and "revoke all" work, `Max-Age` on the cookie, and `Secure` over HTTPS. Keep the token a port (`SessionTokens`, `src/identity/application/ports/session-tokens.ts`) so only the adapter changes.
+- **Effort:** M. **Testable:** yes. An expired token gives 401; a revoked nonce gives 401; two logins give different tokens; the cookie string carries `Max-Age` and, over HTTPS, `Secure` (update the exact-cookie pin at `app/api/[...path]/route.test.ts:285`).
+
+### P2-14. `sameOrigin` lets a request with no `Origin` header through
+
+Found by the Phase 7d.4 security review; already in the starter. `sameOrigin` (`src/identity/entry-points/http/session-guard.ts:24-36`) rejects `Sec-Fetch-Site: cross-site`, and rejects an `Origin` whose host differs from `Host`, but a request with **no** `Origin` passes (the `if (origin)` branch is skipped). `handle` applies it to `POST` only (`src/server/handle.ts:20`). The comment in the guard names this as intended, for curl and scripts. The remaining protection against cross-site requests that omit `Origin` is the `SameSite=Strict` cookie: without the cookie, private routes answer 401, and `POST session` is public anyway (P0-7). Browsers send `Origin` on cross-origin POSTs and `Sec-Fetch-Site` on all requests, so a browser attacker cannot omit both today; the exposure is an older or unusual client, or a future change that weakens the cookie to `SameSite=Lax`. **Launch impact:** low while `SameSite=Strict` holds. **Fix:** in production, treat a POST with neither `Origin` nor `Sec-Fetch-Site` as same-origin only if it carries a custom header a cross-site form cannot send (for example `X-Requested-With`), or require `Origin`; keep the exemption behind a dev flag for curl. Pair it with the Host allowlist in P0-5. Effort S. Testable: yes (POST with neither header and a valid cookie gets 403 when the flag is off).
+
+### P2-15. Token parsing accepts trailing segments; length check returns early (informational)
+
+Found by the Phase 7d.4 security review; already in the starter. Neither is a forgery path.
+
+- **Malleable token.** `verify` does `token.split('.')` and reads only the first two parts (`hmac-session-tokens.ts:13`), so `id.sig.anything` verifies as `id`. One person can therefore hold many distinct valid cookie strings, which defeats an equality-based denylist for revocation. The signature still covers the id, so nobody can change the identity. **Fix:** reject any token that does not split into exactly two parts (three or more fail), and match `^[a-z0-9_-]+\.[0-9a-f]{64}$` before comparing. Effort S.
+- **Early return in `equal`.** `equal` (`src/platform/crypto.ts:5-9`) returns `false` before `timingSafeEqual` when the lengths differ, which leaks the length. It is harmless here because the compared value is always a 64-character hex HMAC-SHA256, so the attacker already knows the length. Nothing to fix; keep in mind if `equal` is reused for secrets of variable length (compare hashes of both sides instead). Effort: none.
 
 ---
 
 ## Suggested order
 
 1. P0-1 (unreadable response becomes `unknown`), P0-2 (`processing` in reconcile), P0-3 (customer-side reconcile + UI), P0-4 (pending-intent guard): one block, same root cause.
-2. P0-5 (Host allowlist), P0-6 (readable proposal card).
-3. P1-4, P1-2, P1-7, P1-8, P1-5 (all S), then P1-1 and P1-3 (agent awareness; P1-3 overlaps a Part 2 "transfer tracker").
+2. P0-5 (Host allowlist), P0-6 (readable proposal card), P0-7 (lock the persona selector per environment; real authentication plus P2-13 is the real launch gate, and P2-14 and P2-15 ride with it).
+3. P1-5 (call `assertProductionSecrets` at startup; do it with P0-7 so a locked-down selector is not undone by a default secret), then P1-4, P1-2, P1-7, P1-8 (all S), then P1-1 and P1-3 (agent awareness; P1-3 overlaps a Part 2 "transfer tracker").
 4. P2 as time allows; P2-2, P2-4 and P2-7 belong to the architecture decoupling.
