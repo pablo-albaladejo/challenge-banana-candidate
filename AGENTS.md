@@ -53,7 +53,7 @@ Banana Bank technical challenge starter: a fictional bank's AI assistant built o
 - Two SQLite databases live in `.data/` (app and bank, overridable via `DATA_DIR` / `BANK_DATA_DIR`). `npm run reset` wipes local activity and refuses to run while services are up — save evidence first.
 - The document reference date for the exercise is **24 September 2026**, not the wall clock.
 - Never commit `.env.local` or the OpenAI key; it is server-only.
-- `npm run doctor`, chat, and semantic search spend real OpenAI quota.
+- `npm run doctor`, chat, and semantic search spend real OpenAI quota. With `MODEL_PROVIDER=claude-cli` (or `auto` without a key / out of quota) chat runs through `claude -p` on the developer's Claude subscription and search is lexical (FTS5); tests and E2E force `MODEL_PROVIDER=openai` so they never spawn the real `claude`.
 
 ### Testing Requirements
 

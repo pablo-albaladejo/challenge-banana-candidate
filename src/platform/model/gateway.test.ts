@@ -1,7 +1,38 @@
 import { after, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createEmbeddings, createResponse, MissingOpenAIKeyError, openai } from './gateway';
+import os from 'node:os';
+import path from 'node:path';
+import {
+  activeProvider,
+  createEmbeddings,
+  createResponse,
+  MissingOpenAIKeyError,
+  openai,
+} from './gateway';
 import { reply, startFakeOpenAI, type FakeOpenAI } from '../../../tests/support/openai';
+import { claudeText, startFakeClaude, type FakeClaude } from '../../../tests/support/claude-cli';
+
+/** Runs `act` with some variables set (`undefined` deletes one), then restores them. */
+async function withEnv<T>(vars: Record<string, string | undefined>, act: () => Promise<T>) {
+  const saved = Object.fromEntries(Object.keys(vars).map((k) => [k, process.env[k]]));
+  const apply = (values: Record<string, string | undefined>) => {
+    for (const [key, value] of Object.entries(values))
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+  };
+  apply(vars);
+  try {
+    return await act();
+  } finally {
+    apply(saved);
+  }
+}
+const missingBin = path.join(os.tmpdir(), 'no-such-claude-binary');
+const quota = {
+  status: 429,
+  error: 'You exceeded your current quota.',
+  code: 'insufficient_quota',
+};
 describe('openai', () => {
   it('should reject a blank API key with MissingOpenAIKeyError', () => {
     // Arrange
@@ -80,5 +111,114 @@ describe('createEmbeddings', () => {
       fake.requests.map((r) => [r.path, r.body]),
       [['/v1/embeddings', body]],
     );
+  });
+});
+
+describe('createResponse provider selection', () => {
+  let fake: FakeOpenAI;
+  let claude: FakeClaude;
+  before(async () => {
+    fake = await startFakeOpenAI();
+    claude = startFakeClaude();
+  });
+  after(async () => {
+    await fake.close();
+    claude.close();
+  });
+  beforeEach(() => {
+    fake.reset();
+    claude.reset();
+  });
+
+  it('should reject a cleared key with MissingOpenAIKeyError under forced openai even when claude is available', async () => {
+    // Arrange
+    const vars = { MODEL_PROVIDER: 'openai', OPENAI_API_KEY: '' };
+    // Act & Assert
+    await withEnv(vars, () =>
+      assert.rejects(createResponse({ model: 'm', input: 'Hi' }), MissingOpenAIKeyError),
+    );
+    assert.equal(claude.calls().length, 0);
+  });
+
+  it('should answer through claude-cli in auto mode when no key is configured', async () => {
+    // Arrange
+    claude.script(claudeText('Hello from Claude.'));
+    const vars = { MODEL_PROVIDER: 'auto', OPENAI_API_KEY: '' };
+    // Act
+    const response = await withEnv(vars, () => createResponse({ model: 'm', input: 'Hi' }));
+    // Assert
+    assert.equal(response.output_text, 'Hello from Claude.');
+    assert.equal(fake.requests.length, 0);
+    assert.equal(claude.calls().length, 1);
+  });
+
+  it('should keep the missing-key error in auto mode when the claude binary is unavailable', async () => {
+    // Arrange
+    const vars = { MODEL_PROVIDER: undefined, OPENAI_API_KEY: '', CLAUDE_CLI_BIN: missingBin };
+    // Act & Assert
+    await withEnv(vars, () =>
+      assert.rejects(createResponse({ model: 'm', input: 'Hi' }), MissingOpenAIKeyError),
+    );
+  });
+
+  it('should retry a quota failure with claude-cli in auto mode and log the fallback', async (t) => {
+    // Arrange
+    const warn = t.mock.method(console, 'warn', () => {});
+    fake.script(quota);
+    claude.script(claudeText('Answered by Claude.'));
+    // Act
+    const response = await withEnv({ MODEL_PROVIDER: 'auto' }, () =>
+      createResponse({ model: 'm', input: 'Hi' }),
+    );
+    // Assert
+    assert.equal(response.output_text, 'Answered by Claude.');
+    assert.equal(fake.requests.length, 1);
+    assert.deepEqual(JSON.parse(warn.mock.calls[0].arguments[0] as string), {
+      event: 'model_provider_fallback',
+      operation: 'responses',
+      from: 'openai',
+      to: 'claude-cli',
+      code: 'insufficient_quota',
+    });
+  });
+
+  it('should rethrow a quota failure under forced openai', async () => {
+    // Arrange
+    fake.script(quota);
+    // Act & Assert
+    await withEnv({ MODEL_PROVIDER: 'openai' }, () =>
+      assert.rejects(createResponse({ model: 'm', input: 'Hi' }), { status: 429 }),
+    );
+    assert.equal(claude.calls().length, 0);
+  });
+
+  it('should rethrow a transient rate limit in auto mode', async () => {
+    // Arrange
+    fake.script({ status: 429, error: 'Slow down.', code: 'rate_limit_exceeded' });
+    // Act & Assert
+    await withEnv({ MODEL_PROVIDER: 'auto' }, () =>
+      assert.rejects(createResponse({ model: 'm', input: 'Hi' }), { status: 429 }),
+    );
+    assert.equal(claude.calls().length, 0);
+  });
+});
+
+describe('activeProvider', () => {
+  it('should resolve forced claude-cli without probing for a key', async () => {
+    // Arrange
+    const vars = { MODEL_PROVIDER: 'claude-cli', OPENAI_API_KEY: 'sk-test' };
+    // Act
+    const provider = await withEnv(vars, () => activeProvider());
+    // Assert
+    assert.equal(provider, 'claude-cli');
+  });
+
+  it('should resolve openai in auto mode when the binary is unavailable and no key is set', async () => {
+    // Arrange
+    const vars = { MODEL_PROVIDER: 'auto', OPENAI_API_KEY: '', CLAUDE_CLI_BIN: missingBin };
+    // Act
+    const provider = await withEnv(vars, () => activeProvider());
+    // Assert
+    assert.equal(provider, 'openai');
   });
 });

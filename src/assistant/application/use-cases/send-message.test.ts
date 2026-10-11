@@ -16,6 +16,12 @@ import {
 } from '../../../../tests/support/openai';
 import { persistIntent, transferInputFactory } from '../../../../tests/fixtures/factories';
 import { startLossyBank } from '../../../../tests/support/network';
+import {
+  claudeMessage,
+  claudeToolCalls,
+  startFakeClaude,
+  type FakeClaude,
+} from '../../../../tests/support/claude-cli';
 import { fixedClock, sequentialIds } from '../../../../tests/support/clock';
 import { accounts, conversations, customers } from '../../../../tests/fixtures/world';
 
@@ -420,5 +426,86 @@ describe('sendMessage conversation lock', () => {
     } finally {
       app.internals.locks.release(conversationId);
     }
+  });
+});
+
+// Contract: the real loop, tool registry, seeded DB and bank simulator, with `claude -p` (a fake
+// binary) as the model. No OpenAI fake runs, so any OpenAI call would fail with a missing key.
+describe('sendMessage through the claude-cli provider', () => {
+  let claude: FakeClaude;
+  before(async () => {
+    claude = startFakeClaude();
+    await startBank();
+  });
+  after(async () => {
+    claude.close();
+    process.env.MODEL_PROVIDER = 'openai';
+    await stopBank();
+  });
+  beforeEach(async () => {
+    claude.reset();
+    seedApp();
+    await resetBank();
+    process.env.MODEL_PROVIDER = 'claude-cli';
+  });
+
+  it('should run a tool round and answer with the final message', async () => {
+    // Arrange
+    claude.script(
+      claudeToolCalls({ name: 'list_accounts', arguments: {} }),
+      claudeMessage('You have a main and a savings account.'),
+    );
+    // Act
+    const result = await assistant().sendMessage({
+      userId: customers.lucia,
+      conversationId,
+      content: 'Which accounts do I have?',
+    });
+    // Assert
+    assert.equal(result.answer, 'You have a main and a savings account.');
+    assert.equal(runOf(result.runId).status, 'completed');
+    assert.deepEqual(
+      eventsFor(result.runId).map((e) => [e.kind, e.data.tool]),
+      [
+        ['tool.started', 'list_accounts'],
+        ['tool.completed', 'list_accounts'],
+      ],
+    );
+    const [first, second] = claude.calls();
+    assert.ok(first.stdin.includes('User: Which accounts do I have?'));
+    assert.match(second.stdin, /Assistant called tool list_accounts \(call call_cli_[\w-]+\)/);
+    assert.match(second.stdin, /Tool result \(call call_cli_[\w-]+\): .*acc-lucia-savings/);
+  });
+
+  it('should ground the turn in lexically retrieved documents', async () => {
+    // Arrange
+    claude.script(claudeMessage('The fee is in the documents.'));
+    // Act
+    await assistant().sendMessage({
+      userId: customers.lucia,
+      conversationId,
+      content: 'What is the monthly fee of Aurora?',
+    });
+    // Assert
+    const [call] = claude.calls();
+    assert.match(claude.flag(call, '--system-prompt')!, /Aurora/);
+  });
+
+  it('should fail the run with a provider error when the CLI fails', async () => {
+    // Arrange
+    claude.script({ kind: 'exit', code: 1, stderr: 'Invalid API key' });
+    // Act & Assert
+    await assert.rejects(
+      assistant().sendMessage({ userId: customers.lucia, conversationId, content: 'Hi' }),
+      (e) => {
+        assert.ok(e instanceof DomainError);
+        assert.equal(httpStatusOf(e), 502);
+        assert.match(e.message, /AI provider returned 502/);
+        return true;
+      },
+    );
+    const run = runOf(latestRun().id);
+    assert.equal(run.status, 'failed');
+    assert.equal(run.error, 'The AI provider returned 502. Check permissions and quota.');
   });
 });

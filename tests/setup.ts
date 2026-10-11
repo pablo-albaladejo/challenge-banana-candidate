@@ -26,6 +26,9 @@ process.env.BANK_ADMIN_SECRET = `test-admin-${randomUUID()}`;
 // model use tests/support/openai.ts, which points the SDK at a local fake.
 process.env.OPENAI_API_KEY = '';
 delete process.env.OPENAI_BASE_URL;
+// Forced OpenAI: in `auto`, a cleared key would make the gateway spawn the developer's real
+// `claude` binary. Tests of the claude-cli provider opt in per case, with tests/support/claude-cli.ts.
+process.env.MODEL_PROVIDER = 'openai';
 process.on('exit', () => fs.rmSync(temp, { recursive: true, force: true }));
 // One Faker seed per run: `npm test` sets TEST_SEED in tests/global-setup.ts and every file inherits
 // it. A single file run without TEST_SEED gets its own seed, printed so a failure can be replayed.

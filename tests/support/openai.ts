@@ -4,7 +4,8 @@ import http from 'node:http';
 import { createHash } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 type OutputItem = Record<string, unknown>;
-export type ScriptedTurn = OutputItem[] | { status: number; error: string };
+/** A model turn, or an API error (with an optional OpenAI `code`, e.g. `insufficient_quota`). */
+export type ScriptedTurn = OutputItem[] | { status: number; error: string; code?: string };
 export type RecordedRequest = { path: string; body: any };
 let counter = 0;
 const id = (prefix: string) => `${prefix}_${++counter}`;
@@ -50,8 +51,11 @@ export type FakeOpenAI = {
   script: (...turns: ScriptedTurn[]) => void;
   /** Overrides the vector returned for an exact embedding input. */
   embed: (text: string, vector: number[]) => void;
-  /** Answers every /v1/embeddings request after the first `succeeding` ones with a 400. */
-  failEmbeddingsAfter: (succeeding: number) => void;
+  /**
+   * Answers every /v1/embeddings request after the first `succeeding` ones with a 400, or with
+   * `failure` (e.g. a 429 `insufficient_quota`, which the SDK is told not to retry).
+   */
+  failEmbeddingsAfter: (succeeding: number, failure?: { status: number; code: string }) => void;
   reset: () => void;
   close: () => Promise<void>;
 };
@@ -67,21 +71,28 @@ export async function startFakeOpenAI(options: FakeOpenAIOptions = {}): Promise<
   const vectors = new Map<string, number[]>();
   const requests: RecordedRequest[] = [];
   let embeddingBudget = Infinity;
+  let embeddingFailure: { status: number; code: string } | undefined;
   const server = http.createServer(async (req, res) => {
     let raw = '';
     for await (const chunk of req) raw += chunk;
     const body = raw ? JSON.parse(raw) : {};
     const path = (req.url || '').replace(/\?.*$/, '');
     requests.push({ path, body });
-    const send = (status: number, data: unknown) => {
-      res.writeHead(status, { 'content-type': 'application/json' });
+    const send = (status: number, data: unknown, headers: Record<string, string> = {}) => {
+      res.writeHead(status, { 'content-type': 'application/json', ...headers });
       res.end(JSON.stringify(data));
     };
     if (path === '/health') return send(200, { ok: true });
     if (path.endsWith('/embeddings')) {
       // A 400 is not retried by the SDK, so the failure surfaces at once.
       if (embeddingBudget-- <= 0)
-        return send(400, { error: { message: 'Scripted embeddings failure.' } });
+        return embeddingFailure
+          ? send(
+              embeddingFailure.status,
+              { error: { message: 'Scripted embeddings failure.', code: embeddingFailure.code } },
+              { 'x-should-retry': 'false' },
+            )
+          : send(400, { error: { message: 'Scripted embeddings failure.' } });
       const inputs: string[] = Array.isArray(body.input) ? body.input : [body.input];
       return send(200, {
         object: 'list',
@@ -97,7 +108,15 @@ export async function startFakeOpenAI(options: FakeOpenAIOptions = {}): Promise<
     if (path.endsWith('/responses')) {
       const turn = turns.shift() ?? options.policy?.(body);
       if (!turn) return send(500, { error: { message: 'No scripted model turn left.' } });
-      if (!Array.isArray(turn)) return send(turn.status, { error: { message: turn.error } });
+      // A coded error (quota) is final, as at OpenAI: `x-should-retry` stops the SDK retrying it.
+      if (!Array.isArray(turn))
+        return turn.code
+          ? send(
+              turn.status,
+              { error: { message: turn.error, code: turn.code } },
+              { 'x-should-retry': 'false' },
+            )
+          : send(turn.status, { error: { message: turn.error } });
       return send(200, {
         id: id('resp'),
         object: 'response',
@@ -119,11 +138,13 @@ export async function startFakeOpenAI(options: FakeOpenAIOptions = {}): Promise<
     requests,
     script: (...next) => turns.push(...next),
     embed: (text, vector) => vectors.set(text, vector),
-    failEmbeddingsAfter: (succeeding) => {
+    failEmbeddingsAfter: (succeeding, failure) => {
       embeddingBudget = succeeding;
+      embeddingFailure = failure;
     },
     reset: () => {
       embeddingBudget = Infinity;
+      embeddingFailure = undefined;
       turns.length = 0;
       vectors.clear();
       requests.length = 0;

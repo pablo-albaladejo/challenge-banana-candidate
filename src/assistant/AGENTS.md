@@ -51,7 +51,7 @@ Hexagonal vertical (plan §10): `domain/` (pure rules), `application/` (ports, s
 ### Common Patterns
 
 - Responses API items are appended to `input` (`toResponseInputItems`, in the adapter) and tool results returned as `function_call_output`.
-- Errors from OpenAI are summarized as "The AI provider returned <status>"; `MissingOpenAIKeyError` comes from `../platform/model/gateway.ts`.
+- Errors from OpenAI are summarized as "The AI provider returned <status>"; `MissingOpenAIKeyError` comes from `../platform/model/gateway.ts`. Under the claude-cli provider (`MODEL_PROVIDER`, see `../platform/AGENTS.md`) the loop and `infrastructure/openai-model.adapter.ts` are unchanged: the platform gateway behind `createResponse` translates the request for `claude -p` and back into `function_call` / message output, a CLI failure is a `ClaudeCliError` with status 502 (so the provider-error path answers "The AI provider returned 502"), and retrieval is lexical. `application/use-cases/send-message.test.ts` pins this contract with the fake binary of `tests/support/claude-cli.ts`.
 
 ## Dependencies
 

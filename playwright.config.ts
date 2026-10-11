@@ -12,6 +12,8 @@ const stack = {
   NEXT_DIST_DIR: e2e.distDir,
   OPENAI_API_KEY: 'e2e-fake-key',
   OPENAI_BASE_URL: `http://127.0.0.1:${e2e.openaiPort}/v1`,
+  // Never the developer's real `claude` binary: the fake model above serves every call.
+  MODEL_PROVIDER: 'openai',
   NEXT_TELEMETRY_DISABLED: '1',
 };
 export default defineConfig({

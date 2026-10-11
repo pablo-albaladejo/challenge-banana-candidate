@@ -23,6 +23,8 @@ OPENAI_CHAT_MODEL=gpt-6-luna
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 ```
 
+No OpenAI key or no credit? With the [Claude Code](https://claude.com/claude-code) CLI installed and logged in, `MODEL_PROVIDER=auto` (the default) answers chat with `claude -p --model haiku` when `OPENAI_API_KEY` is blank, and retries a call with it when OpenAI answers `429 insufficient_quota`; `MODEL_PROVIDER=claude-cli` forces it and `MODEL_PROVIDER=openai` disables it. `CLAUDE_CLI_BIN` and `CLAUDE_CLI_MODEL` pick the binary and model. Claude has no embeddings, so under claude-cli document search is lexical (SQLite FTS5, BM25) instead of semantic; `/api/health` reports `modelProvider` and `searchMode`. OpenAI stays the target configuration.
+
 You can also supply `OPENAI_API_KEY` as an environment variable. Environment variables take priority over `.env.local`, which takes priority over `.env`. One key serves both APIs. It is used only on the server; never commit it or place it in a parent-directory file.
 
 ```sh
@@ -107,7 +109,7 @@ Save the complete challenge conversations from your chosen tools and put the ori
 
 Optional settings are in `.env.example`. To move the bank port, update both `BANK_PORT` and `BANK_URL`. `DATA_DIR` and `BANK_DATA_DIR` can separate storage; both default to `.data/`. For separate startup, use `npm run bank` in one terminal and `npx next dev --webpack --hostname 127.0.0.1 --port 3000` in another; both must share `BANK_SERVICE_SECRET`.
 
-OpenAI 401 usually means an invalid key; 403/model errors can mean missing project access; 429 indicates quota or rate limits. `doctor` isolates these checks from the UI. Search also needs a key: a missing key returns an explicit `OPENAI_API_KEY` configuration message. After changing `.env.local`, restart the services. Ensure ports 3000/4001 are free. `reset` refuses to clear data if it detects running challenge services. Services bind to localhost and never move real money.
+OpenAI 401 usually means an invalid key; 403/model errors can mean missing project access; 429 indicates quota or rate limits. `doctor` isolates these checks from the UI and prints the provider that answered (`openai` or `claude-cli`). Search also needs a key: a missing key returns an explicit `OPENAI_API_KEY` configuration message, unless the claude-cli provider is active (then search is lexical). After changing `.env.local`, restart the services. Ensure ports 3000/4001 are free. `reset` refuses to clear data if it detects running challenge services. Services bind to localhost and never move real money.
 
 On Windows, `better-sqlite3` 13.0.3 has a [reported installation issue](https://github.com/WiseLibs/better-sqlite3/issues/1516): `npm ci` may invoke `node-gyp` and fail when Python or C++ build tools are unavailable, including on Node 24. If this blocks setup, send the organizers the error and your Node/npm versions; an installation blocker is not part of the challenge.
 

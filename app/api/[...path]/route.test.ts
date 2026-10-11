@@ -104,6 +104,33 @@ describe('POST /api/search', () => {
     assert.equal(result.body.sources[0].audience, 'internal');
   });
 
+  it('should say which retrieval mode answered', async () => {
+    // Arrange
+    const query = await chunkText(publicDocumentId());
+    // Act
+    const result = await api('POST', 'search', { as: customers.lucia, body: { query } });
+    // Assert
+    assert.equal(result.body.mode, 'semantic');
+  });
+
+  it('should search lexically and keep internal sources from a customer under claude-cli', async () => {
+    // Arrange
+    const query = await chunkText(internalDocumentId());
+    process.env.MODEL_PROVIDER = 'claude-cli';
+    // Act
+    let result;
+    try {
+      result = await api('POST', 'search', { as: customers.lucia, body: { query } });
+    } finally {
+      process.env.MODEL_PROVIDER = 'openai';
+    }
+    // Assert
+    assert.equal(result.status, 200);
+    assert.equal(result.body.mode, 'lexical');
+    assert.ok(result.body.sources.length > 0);
+    assert.ok(result.body.sources.every((s: any) => s.audience === 'public'));
+  });
+
   it('should return sources without embedding vectors', async () => {
     // Arrange
     const query = await chunkText(publicDocumentId());
@@ -135,6 +162,30 @@ describe('GET /api/health', () => {
     assert.equal(result.body.service, 'banana-app');
     assert.equal(typeof result.body.chatModel, 'string');
     assert.equal(typeof result.body.embeddingModel, 'string');
+  });
+
+  it('should report the resolved model provider and the search mode it implies', async () => {
+    // Arrange
+    // Act
+    const result = await api('GET', 'health');
+    // Assert
+    assert.equal(result.body.modelProvider, 'openai');
+    assert.equal(result.body.searchMode, 'semantic');
+  });
+
+  it('should report lexical search when the claude-cli provider is forced', async () => {
+    // Arrange
+    process.env.MODEL_PROVIDER = 'claude-cli';
+    // Act
+    let result;
+    try {
+      result = await api('GET', 'health');
+    } finally {
+      process.env.MODEL_PROVIDER = 'openai';
+    }
+    // Assert
+    assert.equal(result.body.modelProvider, 'claude-cli');
+    assert.equal(result.body.searchMode, 'lexical');
   });
 
   it('should mark every response as not cacheable', async () => {
