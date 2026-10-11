@@ -1,5 +1,6 @@
 // The shape of a suite module for `npm run eval -- evals/example.eval.ts`. Its subject is a
-// trivial fake that never calls the model; a real suite builds its subject from `model`.
+// trivial fake that never calls the model; a real suite builds its subject from `model`. It
+// declares a metric, so quality is gated per metric and its `must` rates are diagnostics.
 import type { EvalSuite } from './case';
 
 const suite: EvalSuite<{ name: string }, string> = {
@@ -8,6 +9,11 @@ const suite: EvalSuite<{ name: string }, string> = {
   parse: (raw) => {
     if (typeof raw !== 'string' || !raw.trim()) throw new Error('expected a non-empty reply');
     return raw;
+  },
+  metrics: {
+    // Per run, over every case: the share of the golden set greeted by name.
+    'greets by name': (run) =>
+      run.filter((o) => o.kept('must: greets the customer by name')).length / run.length,
   },
   cases: [
     {
@@ -22,7 +28,6 @@ const suite: EvalSuite<{ name: string }, string> = {
     {
       id: 'greets-diego',
       input: () => ({ name: 'Diego' }),
-      n: 4,
       must: [{ label: 'greets the customer by name', check: (out) => out.includes('Diego') }],
       mustNot: [{ label: 'states a completion', check: (out) => /was completed/i.test(out) }],
     },

@@ -1607,9 +1607,46 @@ This runs outside `npm test` and pre-push and spends OpenAI quota.
     `wireSupport()`), the domain scorers as predicates, and the `submission/eval-case-brief.{json,md}`
     output, behind `npm run eval:case-brief` (a wrapper for
     `npm run eval -- evals/case-brief.eval.ts --out submission/eval-case-brief.json`, which also
-    writes the `.md`). Commit 7 also adds a suite-declared `metrics` hook so the quality metrics
-    above are gated **per metric** with a floor of one case (1/cases) rather than one run; the
-    per-assertion rates of the base harness then become diagnostics.
+    writes the `.md`).
+  - **Per-metric gating has landed** (commit 7 prep). A suite may declare
+    `metrics: Record<string, (run: { caseId, output, kept }[]) => number>`: each metric is called
+    once per run index with the outcome of every case at that run (`kept` says which assertions
+    the run kept) and returns a rate in [0, 1]. Its rate is the mean of those per-run samples,
+    gated at the A/A mean − max(2 SE, **one case**, 1/cases) with the same `ungated`,
+    `too-noisy`, model and n mismatch rules; the A/A baseline stores each metric's rates and
+    per-run samples. Such a suite's `must` rates become `diagnostic` (reported, not gated);
+    `mustNot` stays zero tolerance per assertion. Every case must run the same N; a run index with
+    an unmeasured case scores 0 on every metric and the report is incomplete; a metric that throws
+    or returns anything but a finite number in [0, 1] is a harness fault. Statuses and exit codes
+    are unchanged. The case-brief suite of commit 7 declares the quality metrics above this way.
+  - **Review fixes to per-metric gating.**
+    - _Case set._ Each metric records the sorted ids of the cases it measured, in the report and
+      in the baseline. A/A reports over different case sets are a harness fault, and a run over
+      another set than the baseline's (swapped or grown) is `ungated` with reason `case mismatch`,
+      so a threshold is never applied to cases it was not measured on.
+    - _Noise estimator._ The margin is max(2 SE, 1/cases), where the SE of a report mean is the
+      pooled sample SD of every A/A per-run sample (k reports × n runs, Bessel) divided by √n. It
+      uses the run-to-run noise the A/A recorded, so three A/A reports whose means happen to agree
+      no longer collapse the margin to the floor. A/A metrics whose samples do not number n, or
+      whose rate is not their mean, are a harness fault. Per-assertion gating is unchanged. The
+      threshold ignores the uncertainty of the A/A mean itself (a new report differs from it by
+      SE·√(1 + 1/k)), so it is slightly liberal.
+    - _Incomplete runs._ A run index with an unmeasured case still samples 0, but the metric is
+      `ungated` (reason `incomplete`), not failed; the report stays `incomplete` (exit 1).
+    - _`kept` and mutation._ `kept('kind: label')` is an accessor: a key the case does not declare
+      (a typo) is a harness fault instead of a silent `undefined` that could turn into a pass.
+      Metrics receive a frozen run, frozen outcomes and a deep-frozen structured clone of each
+      output; metrics must not mutate, and a mutation (or an output that is not plain data) is a
+      harness fault. Only plain data is supported: `Map`/`Set` contents are not frozen and class
+      prototypes are lost by the clone, so neither is protected.
+    - _Case `passed`._ In a suite with metrics a case's `passed` only means every run was measured
+      and every `mustNot` kept; `policy.casePassed` in the JSON states this.
+    - _Accepted blind spot of the one-case floor._ With the floor at 1/cases, a single golden case
+      can fail on every run and the metric still passes when the A/A was clean: with 5 cases, a
+      20% blind spot. It is accepted because a tighter floor would gate on less than one case of
+      signal, which a 5-case A/A cannot support. `mustNot` remains the per-case safety net (zero
+      tolerance on every run of every case), and the `must` diagnostics still show which case
+      regressed.
 
 ### 7.6 Why not evalite or promptfoo
 

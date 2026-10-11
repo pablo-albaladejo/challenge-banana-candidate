@@ -41,6 +41,23 @@ const failingSuite = () => {
   return file;
 };
 
+/** A suite module in a temp dir whose metric reads a misspelled assertion key. */
+const misspelledMetricSuite = () => {
+  const file = path.join(tempDir(), 'misspelled.eval.ts');
+  fs.writeFileSync(
+    file,
+    `export default {
+  name: 'misspelled',
+  subject: () => async () => 'x',
+  parse: (raw: unknown) => String(raw),
+  metrics: { safe: (run: { kept: (key: string) => boolean }[]) => run.filter((o) => !o.kept('mustNot: says y')).length / run.length },
+  cases: [{ id: 'a', input: () => 'x', must: [], mustNot: [{ label: 'says z', check: (o: string) => o === 'z' }] }],
+};
+`,
+  );
+  return file;
+};
+
 describe('npm run eval', () => {
   it('should exit 3 and report UNGATED for a complete suite without a baseline', async () => {
     // Arrange
@@ -80,6 +97,28 @@ describe('npm run eval', () => {
     assert.match(result.stdout, /^PASS$/m);
   });
 
+  it('should gate the example metric and print it with its verdict once A/A reports arm it', async () => {
+    // Arrange
+    const dir = tempDir();
+    const aa = ['1', '2', '3'].map((i) => path.join(dir, `aa${i}.json`));
+    for (const file of aa) await evalCli(example, '--aa', '--out', file);
+    const out = path.join(dir, 'gated.json');
+    // Act
+    const result = await evalCli(
+      example,
+      ...aa.flatMap((file) => ['--baseline', file]),
+      '--out',
+      out,
+    );
+    // Assert
+    assert.equal(result.code, 0, result.stdout + result.stderr);
+    assert.match(result.stdout, /^greets by name\s+2\s+3\s+100%\s+50%\s+PASS\s+100% 100% 100%$/m);
+    assert.deepEqual(
+      JSON.parse(fs.readFileSync(out, 'utf8')).metrics.map((m: { verdict: string }) => m.verdict),
+      ['pass'],
+    );
+  });
+
   it('should exit 1 and report INCOMPLETE when a run is unmeasured', async () => {
     // Arrange
     const suite = failingSuite();
@@ -88,6 +127,16 @@ describe('npm run eval', () => {
     // Assert
     assert.equal(result.code, 1);
     assert.match(result.stdout, /^INCOMPLETE: /m);
+  });
+
+  it('should exit 2 when a metric reads an assertion its case does not declare', async () => {
+    // Arrange
+    const suite = misspelledMetricSuite();
+    // Act
+    const result = await evalCli(suite, '--out', path.join(tempDir(), 'r.json'));
+    // Assert
+    assert.equal(result.code, 2);
+    assert.match(result.stderr, /Harness fault: .*declares no assertion "mustNot: says y"/);
   });
 
   it('should exit 2 on a harness fault in the arguments', async () => {

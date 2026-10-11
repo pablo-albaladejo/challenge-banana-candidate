@@ -16,7 +16,8 @@ export type RunResult = {
 export type AssertionResult = {
   kind: AssertionKind;
   label: string;
-  gate: 'safety' | 'quality';
+  /** `diagnostic`: a `must` of a suite gated by its metrics, reported but not gated. */
+  gate: 'safety' | 'quality' | 'diagnostic';
   passes: number;
   n: number;
   rate: number;
@@ -25,12 +26,32 @@ export type AssertionResult = {
   /** Why a quality assertion is `ungated` or `too-noisy`. */
   reason?: string;
 };
+/** A suite-declared metric: one sample per run over every case (0 for a run with an unmeasured case). */
+export type MetricResult = {
+  name: string;
+  /** Runs, each scored over all `cases` cases. */
+  n: number;
+  cases: number;
+  /** The sorted ids of the cases measured: a baseline only gates the same set. */
+  caseIds: string[];
+  samples: number[];
+  /** The mean of the samples. */
+  rate: number;
+  threshold: number | null;
+  verdict: Verdict;
+  /** Why the metric is `ungated` (incl. `incomplete`, `case mismatch`) or `too-noisy`. */
+  reason?: string;
+};
 export type CaseResult = {
   id: string;
   n: number;
   measured: number;
   unmeasured: number;
-  /** Every assertion gated and passed, and no unmeasured run. */
+  /**
+   * No unmeasured run and every assertion passed its gate. In a suite with metrics the `must`
+   * rates are diagnostics, so this only says the case was measured and kept every `mustNot`: its
+   * quality is in the metrics. `policy.casePassed` states which reading applies.
+   */
   passed: boolean;
   /** Over measured runs; null when none was measured. */
   latencyMs: { mean: number | null; max: number | null };
@@ -48,7 +69,14 @@ export type EvalReport = {
   startedAt: string;
   finishedAt: string;
   model: ModelInfo;
-  policy: { defaultN: number; timeoutMs: number; safety: string; quality: string };
+  policy: {
+    defaultN: number;
+    timeoutMs: number;
+    safety: string;
+    quality: string;
+    /** What a case's `passed` means in this report (it differs in a suite with metrics). */
+    casePassed: string;
+  };
   /** False when any run is unmeasured: the report is incomplete and the eval exits non-zero. */
   complete: boolean;
   /** Recorded with `--aa` as a baseline candidate: quality is never gated in it. */
@@ -58,11 +86,18 @@ export type EvalReport = {
   passed: boolean;
   unmeasured: number;
   cases: CaseResult[];
+  /** Only when the suite declares metrics: quality is then gated here, not per assertion. */
+  metrics?: MetricResult[];
 };
 
 /** The status, derived from the runs and verdicts, never from a stored field. */
-export function reportStatus(report: Pick<EvalReport, 'complete' | 'aa' | 'cases'>): ReportStatus {
-  const verdicts = report.cases.flatMap((c) => c.assertions.map((a) => a.verdict));
+export function reportStatus(
+  report: Pick<EvalReport, 'complete' | 'aa' | 'cases' | 'metrics'>,
+): ReportStatus {
+  const verdicts = [
+    ...report.cases.flatMap((c) => c.assertions.map((a) => a.verdict)),
+    ...(report.metrics ?? []).map((m) => m.verdict),
+  ];
   if (!report.complete) return 'incomplete';
   if (verdicts.includes('fail')) return 'fail';
   if (report.aa) return 'aa';
@@ -71,6 +106,7 @@ export function reportStatus(report: Pick<EvalReport, 'complete' | 'aa' | 'cases
 }
 
 const percent = (rate: number) => `${Math.round(rate * 100)}%`;
+const verdict = (v: Verdict) => (v === 'pass' || v === 'fail' ? v.toUpperCase() : v);
 
 export function formatReport(report: EvalReport): string {
   const model = report.model.providers.length
@@ -85,15 +121,32 @@ export function formatReport(report: EvalReport): string {
       `${a.passes}/${a.n}`,
       percent(a.rate),
       a.threshold === null ? '—' : percent(a.threshold),
-      a.verdict === 'pass' || a.verdict === 'fail' ? a.verdict.toUpperCase() : a.verdict,
+      verdict(a.verdict),
     ]),
   );
-  const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => r[i].length)));
-  const line = (cells: string[]) =>
-    cells
-      .map((cell, i) => cell.padEnd(widths[i]))
-      .join('  ')
-      .trimEnd();
+  const table = (head: string[], body: string[][]) => {
+    const widths = head.map((h, i) => Math.max(h.length, ...body.map((r) => r[i].length)));
+    const line = (cells: string[]) =>
+      cells
+        .map((cell, i) => cell.padEnd(widths[i]))
+        .join('  ')
+        .trimEnd();
+    return [head, ...body].map(line);
+  };
+  const metrics = report.metrics?.length
+    ? table(
+        ['metric', 'cases', 'runs', 'rate', 'threshold', 'verdict', 'samples'],
+        report.metrics.map((m) => [
+          m.name,
+          String(m.cases),
+          String(m.n),
+          percent(m.rate),
+          m.threshold === null ? '—' : percent(m.threshold),
+          verdict(m.verdict),
+          m.samples.map(percent).join(' '),
+        ]),
+      )
+    : [];
   const unmeasured = report.cases.flatMap((c) =>
     c.runs.flatMap((r) =>
       r.unmeasured
@@ -101,9 +154,12 @@ export function formatReport(report: EvalReport): string {
         : [],
     ),
   );
-  const reasons = report.cases.flatMap((c) =>
-    c.assertions.flatMap((a) => (a.reason ? [`${c.id} · ${a.label}: ${a.reason}`] : [])),
-  );
+  const reasons = [
+    ...(report.metrics ?? []).flatMap((m) => (m.reason ? [`metric ${m.name}: ${m.reason}`] : [])),
+    ...report.cases.flatMap((c) =>
+      c.assertions.flatMap((a) => (a.reason ? [`${c.id} · ${a.label}: ${a.reason}`] : [])),
+    ),
+  ];
   const ungated = reasons.length;
   const latency = report.cases.map(
     (c) => `${c.id}: mean ${c.latencyMs.mean ?? '—'} ms, max ${c.latencyMs.max ?? '—'} ms`,
@@ -112,13 +168,13 @@ export function formatReport(report: EvalReport): string {
     incomplete: `INCOMPLETE: ${report.unmeasured} unmeasured run${report.unmeasured === 1 ? '' : 's'} (never a pass)`,
     fail: 'FAIL',
     aa: 'A/A: complete, no safety violation; a baseline candidate for --baseline (quality not gated, not a pass)',
-    ungated: `UNGATED: no failure, but ${ungated} quality assertion${ungated === 1 ? ' is' : 's are'} not gated, so this is not a pass. Record >= 3 A/A runs with --aa and gate with --baseline; raise N if too noisy`,
+    ungated: `UNGATED: no failure, but ${ungated} quality gate${ungated === 1 ? ' is' : 's are'} not gated, so this is not a pass. Record >= 3 A/A runs with --aa and gate with --baseline; raise N if too noisy`,
     pass: 'PASS',
   }[reportStatus(report)];
   return [
     `eval ${report.suite} · ${report.startedAt} · model: ${model}`,
-    line(header),
-    ...rows.map(line),
+    ...table(header, rows),
+    ...metrics,
     ...unmeasured,
     ...reasons,
     `latency: ${latency.join('; ')}`,

@@ -4,7 +4,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import { HarnessFault } from './case';
-import { defaultReportPath, formatReport, readReport, reportStatus, writeReport } from './report';
+import {
+  defaultReportPath,
+  formatReport,
+  readReport,
+  reportStatus,
+  writeReport,
+  type EvalReport,
+  type MetricResult,
+} from './report';
 import { runSuite } from './runner';
 
 const asText = (raw: unknown) => {
@@ -30,6 +38,29 @@ const completeReport = (reply: string, options: Parameters<typeof runSuite>[1] =
     },
     options,
   );
+/** One `recall` metric result with the given rate and verdict, as the runner reports it. */
+const metric = (verdict: MetricResult['verdict'], rate = 1): MetricResult => ({
+  name: 'recall',
+  n: 3,
+  cases: 2,
+  caseIds: ['case-a', 'case-b'],
+  samples: [rate, rate, rate],
+  rate,
+  threshold: verdict === 'ungated' ? null : 0.5,
+  verdict,
+  ...(verdict === 'ungated' ? { reason: 'no A/A baseline for this metric' } : {}),
+});
+/** A complete report of a suite with metrics: its must assertions are diagnostics. */
+const metricReport = async (verdict: MetricResult['verdict'], rate = 1): Promise<EvalReport> => {
+  const report = await completeReport('Hello Lucía');
+  report.cases[0].assertions[0] = {
+    ...report.cases[0].assertions[0],
+    gate: 'diagnostic',
+    verdict: 'diagnostic',
+  };
+  delete report.cases[0].assertions[0].reason;
+  return { ...report, metrics: [metric(verdict, rate)] };
+};
 const tempFile = (name: string) =>
   path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'eval-report-')), name);
 const sampleReport = () => {
@@ -112,6 +143,27 @@ describe('formatReport', () => {
     assert.match(table, /^A\/A: complete, no safety violation/m);
     assert.doesNotMatch(table, /^PASS$/m);
   });
+
+  it('should list every metric with its rate, threshold, verdict and per-run samples', async () => {
+    // Arrange
+    const report = await metricReport('fail', 0.25);
+    // Act
+    const table = formatReport(report);
+    // Assert
+    assert.match(table, /^metric\s+cases\s+runs\s+rate\s+threshold\s+verdict\s+samples$/m);
+    assert.match(table, /^recall\s+2\s+3\s+25%\s+50%\s+FAIL\s+25% 25% 25%$/m);
+    assert.match(table, /case-refund\s+must\s+names the customer\s+3\/3\s+100%\s+—\s+diagnostic/);
+  });
+
+  it('should count an ungated metric in the ungated status line with its reason', async () => {
+    // Arrange
+    const report = await metricReport('ungated');
+    // Act
+    const table = formatReport(report);
+    // Assert
+    assert.match(table, /^metric recall: no A\/A baseline for this metric$/m);
+    assert.match(table, /^UNGATED: no failure, but 1 quality gate is not gated/m);
+  });
 });
 
 describe('reportStatus', () => {
@@ -165,6 +217,33 @@ describe('reportStatus', () => {
     const status = reportStatus(report);
     // Assert
     assert.equal(status, 'pass');
+  });
+
+  it('should rate a complete report whose every metric passed and only diagnostics remain as passed', async () => {
+    // Arrange
+    const report = await metricReport('pass');
+    // Act
+    const status = reportStatus(report);
+    // Assert
+    assert.equal(status, 'pass');
+  });
+
+  it('should rate a complete report with a failed metric as failed', async () => {
+    // Arrange
+    const report = await metricReport('fail', 0.25);
+    // Act
+    const status = reportStatus(report);
+    // Assert
+    assert.equal(status, 'fail');
+  });
+
+  it('should rate a complete report with a too-noisy metric as ungated', async () => {
+    // Arrange
+    const report = await metricReport('too-noisy');
+    // Act
+    const status = reportStatus(report);
+    // Assert
+    assert.equal(status, 'ungated');
   });
 });
 

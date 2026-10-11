@@ -7,6 +7,7 @@ import {
   baselineFromReports,
   decide,
   deriveThreshold,
+  gateMetric,
   gateQuality,
   passRate,
   sameModel,
@@ -19,7 +20,13 @@ const aaReport = (passes: number, overrides: Partial<EvalReport> = {}): EvalRepo
   startedAt: new Date(Date.UTC(2026, 9, 11, 10, 0, sequence++)).toISOString(),
   finishedAt: '2026-10-11T10:00:01.000Z',
   model: { providers: ['openai'], models: ['gpt-6-luna'] },
-  policy: { defaultN: 3, timeoutMs: 1000, safety: 'zero-tolerance', quality: 'k-of-n' },
+  policy: {
+    defaultN: 3,
+    timeoutMs: 1000,
+    safety: 'zero-tolerance',
+    quality: 'k-of-n',
+    casePassed: 'every assertion passed',
+  },
   complete: true,
   aa: true,
   status: 'aa',
@@ -49,6 +56,23 @@ const aaReport = (passes: number, overrides: Partial<EvalReport> = {}): EvalRepo
     },
   ],
   ...overrides,
+});
+
+/** The report with one `recall` metric measured over its runs with these per-run samples. */
+const withMetric = (report: EvalReport, samples: number[]): EvalReport => ({
+  ...report,
+  metrics: [
+    {
+      name: 'recall',
+      n: samples.length,
+      cases: 1,
+      caseIds: ['case-a'],
+      samples,
+      rate: samples.reduce((s, x) => s + x, 0) / samples.length,
+      threshold: null,
+      verdict: 'ungated',
+    },
+  ],
 });
 
 describe('passRate', () => {
@@ -213,6 +237,99 @@ describe('gateQuality', () => {
   });
 });
 
+/** Three A/A reports of three runs whose every per-run sample agrees: no measured noise. */
+const agree = [
+  [1, 1, 1],
+  [1, 1, 1],
+  [1, 1, 1],
+];
+
+describe('gateMetric', () => {
+  it('should gate a metric at the A/A mean minus one case when the A/A runs agree', () => {
+    // Arrange
+    const aa = agree;
+    // Act
+    const gate = gateMetric(0.8, aa, 3, 5);
+    // Assert
+    assert.equal(gate.verdict, 'pass');
+    assert.ok(Math.abs(gate.threshold! - 0.8) < 1e-9);
+  });
+
+  it('should fail a metric below its threshold', () => {
+    // Arrange
+    const aa = agree;
+    // Act
+    const gate = gateMetric(0.6, aa, 3, 5);
+    // Assert
+    assert.equal(gate.verdict, 'fail');
+  });
+
+  it('should subtract two standard errors of a report mean, from the pooled per-run SD, when that exceeds one case', () => {
+    // Arrange
+    const aa = [
+      [1, 0.5, 1, 0.5],
+      [0.5, 1, 0.5, 1],
+      [1, 0.5, 0.5, 1],
+    ]; // 12 samples: mean 0.75, pooled SD sqrt(0.75 / 11); 2 SD / sqrt(4) = SD > 1/10
+    // Act
+    const gate = gateMetric(0.5, aa, 4, 10);
+    // Assert
+    assert.equal(gate.verdict, 'pass');
+    assert.ok(Math.abs(gate.threshold! - (0.75 - Math.sqrt(0.75 / 11))) < 1e-9);
+  });
+
+  it('should take the metric noise from the per-run samples even when the A/A report means agree', () => {
+    // Arrange
+    const aa = [
+      [1, 0, 1],
+      [0, 1, 1],
+      [1, 1, 0],
+    ]; // every report mean is 2/3, but the runs swing: pooled SD 0.5, 2 SE = 1 / sqrt(3)
+    // Act
+    const gate = gateMetric(0.3, aa, 3, 10);
+    // Assert
+    assert.equal(gate.verdict, 'pass');
+    assert.ok(Math.abs(gate.threshold! - (2 / 3 - 1 / Math.sqrt(3))) < 1e-9);
+  });
+
+  it('should leave a metric without A/A rates ungated with the reason', () => {
+    // Arrange
+    const aa = undefined;
+    // Act
+    const gate = gateMetric(1, aa, 3, 5);
+    // Assert
+    assert.deepEqual(gate, {
+      threshold: null,
+      verdict: 'ungated',
+      reason: 'no A/A baseline for this metric',
+    });
+  });
+
+  it('should report a metric whose one-case margin reaches the mean as too noisy', () => {
+    // Arrange
+    const aa = agree; // one case: the floor is the whole range
+    // Act
+    const gate = gateMetric(1, aa, 3, 1);
+    // Assert
+    assert.equal(gate.verdict, 'too-noisy');
+    assert.match(gate.reason!, /raise N or add A\/A runs/);
+  });
+
+  it('should report a metric measured over fewer than three runs as too noisy', () => {
+    // Arrange
+    const aa = [
+      [1, 1],
+      [1, 1],
+      [1, 1],
+    ];
+    // Act
+    const gate = gateMetric(1, aa, 2, 5);
+    // Assert
+    assert.equal(gate.verdict, 'too-noisy');
+    assert.equal(gate.threshold, null);
+  });
+});
+
 describe('sameModel', () => {
   it('should equate the same providers and models in any order', () => {
     // Arrange
@@ -245,6 +362,92 @@ describe('baselineFromReports', () => {
       rates: { [key]: [1, 2 / 3, 1] },
       ns: { [key]: 3 },
     });
+  });
+
+  it('should collect the A/A rate, run count and per-run samples of every metric', () => {
+    // Arrange
+    const reports = [
+      withMetric(aaReport(3), [1, 0.5, 1]),
+      withMetric(aaReport(3), [1, 1, 1]),
+      withMetric(aaReport(3), [0.5, 1, 1]),
+    ];
+    // Act
+    const baseline = baselineFromReports(reports);
+    // Assert
+    assert.deepEqual(baseline.metrics, {
+      recall: {
+        rates: [2.5 / 3, 1, 2.5 / 3],
+        samples: [
+          [1, 0.5, 1],
+          [1, 1, 1],
+          [0.5, 1, 1],
+        ],
+        n: 3,
+        caseIds: ['case-a'],
+      },
+    });
+  });
+
+  it('should reject A/A reports whose metrics measured different cases as a harness fault', () => {
+    // Arrange
+    const swapped = withMetric(aaReport(3), [1, 1, 1]);
+    swapped.metrics![0].caseIds = ['case-b'];
+    const reports = [
+      withMetric(aaReport(3), [1, 1, 1]),
+      withMetric(aaReport(3), [1, 1, 1]),
+      swapped,
+    ];
+    // Act & Assert
+    assert.throws(
+      () => baselineFromReports(reports),
+      /measured their metrics over different cases/,
+    );
+  });
+
+  it('should reject an A/A metric whose samples do not match its run count as a harness fault', () => {
+    // Arrange
+    const short = withMetric(aaReport(3), [1, 1]);
+    short.metrics![0].n = 3;
+    const reports = [withMetric(aaReport(3), [1, 1, 1]), withMetric(aaReport(3), [1, 1, 1]), short];
+    // Act & Assert
+    assert.throws(() => baselineFromReports(reports), /one sample per run/);
+  });
+
+  it('should reject an A/A metric whose rate is not the mean of its samples as a harness fault', () => {
+    // Arrange
+    const forged = withMetric(aaReport(3), [1, 1, 1]);
+    forged.metrics![0].rate = 0.5;
+    const reports = [
+      withMetric(aaReport(3), [1, 1, 1]),
+      withMetric(aaReport(3), [1, 1, 1]),
+      forged,
+    ];
+    // Act & Assert
+    assert.throws(() => baselineFromReports(reports), /mean of its samples/);
+  });
+
+  it('should reject A/A reports that differ in their metrics as a harness fault', () => {
+    // Arrange
+    const reports = [
+      withMetric(aaReport(3), [1, 1, 1]),
+      withMetric(aaReport(3), [1, 1, 1]),
+      aaReport(3),
+    ];
+    // Act & Assert
+    assert.throws(() => baselineFromReports(reports), /metrics or run counts/);
+  });
+
+  it('should reject an A/A metric rate outside zero to one as a harness fault', () => {
+    // Arrange
+    const corrupt = withMetric(aaReport(3), [1, 1, 1]);
+    corrupt.metrics![0].rate = 1.5;
+    const reports = [
+      withMetric(aaReport(3), [1, 1, 1]),
+      withMetric(aaReport(3), [1, 1, 1]),
+      corrupt,
+    ];
+    // Act & Assert
+    assert.throws(() => baselineFromReports(reports), HarnessFault);
   });
 
   it('should reject a baseline of fewer than three A/A runs as a harness fault', () => {

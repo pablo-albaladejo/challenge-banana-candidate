@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { HarnessFault, type EvalCase, type Subject } from './case';
+import { HarnessFault, type CaseOutcome, type EvalCase, type Metric, type Subject } from './case';
 import { runSuite } from './runner';
 import type { ModelInfo } from './report';
 import { assertionKey, type Baseline } from './thresholds';
@@ -486,5 +486,489 @@ describe('runSuite', () => {
     );
     // Assert
     assert.deepEqual(report.model, { providers: ['openai'], models: ['gpt-6-luna'] });
+  });
+});
+
+/** The share of the golden set whose output named the customer in that run. */
+const named: Metric<string> = (run) =>
+  run.filter((o) => o.kept('must: names the customer')).length / run.length;
+const payeeCase = (overrides: Partial<EvalCase<string, string>> = {}) =>
+  refundCase({
+    must: [
+      { label: 'names the customer', check: (out: string) => out.includes('Lucía') },
+      { label: 'names the payee', check: (out: string) => out.includes('Bruno') },
+    ],
+    ...overrides,
+  });
+/** The two-case golden set most metric tests run: `case-refund` and `case-b`. */
+const twoCases = ['case-b', 'case-refund'];
+/**
+ * A baseline arming the `named` metric (and every must of `payeeCase`) with these A/A rates, each
+ * report's runs all at its rate, measured over `caseIds`.
+ */
+const metricBaseline = (
+  rates: number[],
+  n = 3,
+  model: ModelInfo = { providers: [], models: [] },
+  caseIds = ['case-refund'],
+): Baseline => {
+  const keys = ['names the customer', 'names the payee'].map((label) =>
+    assertionKey('case-refund', 'must', label),
+  );
+  return {
+    suite: 'demo',
+    model,
+    rates: Object.fromEntries(keys.map((key) => [key, rates])),
+    ns: Object.fromEntries(keys.map((key) => [key, n])),
+    metrics: { named: { rates, samples: rates.map((r) => Array(n).fill(r)), n, caseIds } },
+  };
+};
+const runMetrics = (
+  cases: EvalCase<string, string>[],
+  subject: Subject<string>,
+  options: Parameters<typeof runSuite>[1] = {},
+  metrics: Record<string, Metric<string>> = { named },
+) =>
+  runSuite({ name: 'demo', cases, subject, parse: asText, metrics }, { timeoutMs: 50, ...options });
+
+describe('runSuite with metrics', () => {
+  it('should compute each metric per run over the outcome of every case', async () => {
+    // Arrange
+    const fake = scripted(
+      'Hello Lucía',
+      'Hello there',
+      'Hello Lucía',
+      'Hello Lucía',
+      'Hello Lucía',
+      'Hello there',
+    );
+    // Act
+    const report = await runMetrics([refundCase(), refundCase({ id: 'case-b' })], fake.subject);
+    // Assert
+    const [metric] = report.metrics!;
+    assert.deepEqual(
+      { name: metric.name, n: metric.n, cases: metric.cases, samples: metric.samples },
+      { name: 'named', n: 3, cases: 2, samples: [1, 0.5, 0.5] },
+    );
+    assert.ok(Math.abs(metric.rate - 2 / 3) < 1e-9);
+  });
+
+  it('should hand a metric each case id, parsed output and kept assertions', async () => {
+    // Arrange
+    const fake = scripted('Hello Lucía');
+    const seen: CaseOutcome<string>[][] = [];
+    const spy: Metric<string> = (run) => {
+      seen.push(run);
+      return 1;
+    };
+    // Act
+    await runMetrics([refundCase({ n: 1 })], fake.subject, { defaultN: 1 }, { spy });
+    // Assert
+    assert.deepEqual(
+      seen.map((run) =>
+        run.map((o) => [
+          o.caseId,
+          o.output,
+          o.kept('must: names the customer'),
+          o.kept('mustNot: promises a refund'),
+        ]),
+      ),
+      [[['case-refund', 'Hello Lucía', true, true]]],
+    );
+  });
+
+  it('should pass the suite on its metrics and report the must assertions as diagnostics', async () => {
+    // Arrange
+    const fake = scripted('Hello Lucía');
+    // Act
+    const report = await runMetrics([payeeCase(), payeeCase({ id: 'case-b' })], fake.subject, {
+      baseline: metricBaseline([1, 1, 1], 3, undefined, twoCases),
+    });
+    // Assert
+    assert.deepEqual(
+      report.cases[0].assertions.map((a) => [a.gate, a.verdict, a.rate]),
+      [
+        ['diagnostic', 'diagnostic', 1],
+        ['diagnostic', 'diagnostic', 0],
+        ['safety', 'pass', 1],
+      ],
+    );
+    assert.equal(report.metrics![0].verdict, 'pass');
+    assert.deepEqual(
+      { status: report.status, passed: report.passed, casePassed: report.cases[0].passed },
+      { status: 'pass', passed: true, casePassed: true },
+    );
+  });
+
+  it('should fail the suite when a metric falls below its threshold', async () => {
+    // Arrange
+    const fake = scripted('Hello there');
+    // Act
+    const report = await runMetrics([refundCase(), refundCase({ id: 'case-b' })], fake.subject, {
+      baseline: metricBaseline([1, 1, 1], 3, undefined, twoCases),
+    });
+    // Assert
+    assert.deepEqual(
+      { verdict: report.metrics![0].verdict, threshold: report.metrics![0].threshold },
+      { verdict: 'fail', threshold: 0.5 },
+    );
+    assert.equal(report.status, 'fail');
+  });
+
+  it('should floor the metric margin at one case of the golden set, not one run', async () => {
+    // Arrange
+    const fake = scripted(
+      'Hello Lucía',
+      'Hello Lucía',
+      'Hello there',
+      'Hello Lucía',
+      'Hello there',
+      'Hello there',
+    );
+    // Act
+    const report = await runMetrics([refundCase(), refundCase({ id: 'case-b' })], fake.subject, {
+      baseline: metricBaseline([1, 1, 1], 3, undefined, twoCases),
+    });
+    // Assert
+    assert.deepEqual(
+      { samples: report.metrics![0].samples, verdict: report.metrics![0].verdict },
+      { samples: [1, 0.5, 0], verdict: 'pass' },
+    );
+    assert.equal(report.status, 'pass');
+  });
+
+  it('should keep every mustNot at zero tolerance in a suite with metrics', async () => {
+    // Arrange
+    const fake = scripted('Hello Lucía', 'Hello Lucía', 'Lucía, we will refund you');
+    // Act
+    const report = await runMetrics([refundCase()], fake.subject, {
+      baseline: metricBaseline([1, 1, 1]),
+    });
+    // Assert
+    assert.equal(report.cases[0].assertions[1].verdict, 'fail');
+    assert.equal(report.status, 'fail');
+  });
+
+  it('should score an unmeasured run zero on every metric and mark the report incomplete', async () => {
+    // Arrange
+    let call = 0;
+    const subject = async () => {
+      if (++call === 2) throw new Error('rate limited');
+      return 'Hello Lucía';
+    };
+    // Act
+    const report = await runMetrics([refundCase()], subject, {
+      baseline: metricBaseline([1, 1, 1]),
+    });
+    // Assert
+    assert.deepEqual(report.metrics![0].samples, [1, 0, 1]);
+    assert.equal(report.complete, false);
+    assert.equal(report.status, 'incomplete');
+  });
+
+  it('should report the metrics ungated, never passed, without a baseline', async () => {
+    // Arrange
+    const fake = scripted('Hello Lucía');
+    // Act
+    const report = await runMetrics([refundCase()], fake.subject);
+    // Assert
+    assert.deepEqual(
+      { verdict: report.metrics![0].verdict, reason: report.metrics![0].reason },
+      { verdict: 'ungated', reason: 'no A/A baseline for this metric' },
+    );
+    assert.equal(report.status, 'ungated');
+  });
+
+  it('should ungate a metric whose baseline ran another number of times', async () => {
+    // Arrange
+    const fake = scripted('Hello Lucía');
+    // Act
+    const report = await runMetrics([refundCase()], fake.subject, {
+      baseline: metricBaseline([1, 1, 1], 5),
+    });
+    // Assert
+    assert.equal(report.metrics![0].verdict, 'ungated');
+    assert.match(report.metrics![0].reason!, /n mismatch/);
+    assert.equal(report.status, 'ungated');
+  });
+
+  it('should ungate the metrics when the run model differs from the baseline model', async () => {
+    // Arrange
+    const fake = scripted('Hello Lucía');
+    const model = () => ({ providers: ['claude-cli'], models: ['claude-haiku'] });
+    const baselineModel = { providers: ['openai'], models: ['gpt-6-luna'] };
+    // Act
+    const report = await runMetrics([refundCase()], fake.subject, {
+      baseline: metricBaseline([1, 1, 1], 3, baselineModel),
+      model,
+    });
+    // Assert
+    assert.equal(report.metrics![0].verdict, 'ungated');
+    assert.match(report.metrics![0].reason!, /model mismatch/);
+    assert.equal(report.status, 'ungated');
+  });
+
+  it('should leave the report without metrics when the suite declares none', async () => {
+    // Arrange
+    const fake = scripted('Hello Lucía');
+    // Act
+    const report = await run([refundCase()], fake.subject);
+    // Assert
+    assert.equal('metrics' in report, false);
+    assert.equal(report.cases[0].assertions[0].gate, 'quality');
+  });
+
+  it('should stop with a harness fault when a metric returns a value above one', async () => {
+    // Arrange
+    const fake = scripted('Hello Lucía');
+    // Act & Assert
+    await assert.rejects(
+      runMetrics([refundCase()], fake.subject, {}, { over: () => 1.5 }),
+      /metric "over" returned 1\.5/,
+    );
+  });
+
+  it('should stop with a harness fault when a metric returns a value below zero', async () => {
+    // Arrange
+    const fake = scripted('Hello Lucía');
+    // Act & Assert
+    await assert.rejects(
+      runMetrics([refundCase()], fake.subject, {}, { under: () => -0.1 }),
+      HarnessFault,
+    );
+  });
+
+  it('should stop with a harness fault when a metric returns a number that is not finite', async () => {
+    // Arrange
+    const fake = scripted('Hello Lucía');
+    // Act & Assert
+    await assert.rejects(
+      runMetrics([refundCase()], fake.subject, {}, { empty: () => 0 / 0 }),
+      /metric "empty" returned NaN/,
+    );
+  });
+
+  it('should stop with a harness fault when a metric returns something other than a number', async () => {
+    // Arrange
+    const fake = scripted('Hello Lucía');
+    // Act & Assert
+    await assert.rejects(
+      runMetrics([refundCase()], fake.subject, {}, { text: () => '1' as never }),
+      HarnessFault,
+    );
+  });
+
+  it('should stop with a harness fault when a metric throws', async () => {
+    // Arrange
+    const fake = scripted('Hello Lucía');
+    const broken: Metric<string> = () => {
+      throw new Error('no expected claims');
+    };
+    // Act & Assert
+    await assert.rejects(
+      runMetrics([refundCase()], fake.subject, {}, { broken }),
+      /metric "broken" threw \(no expected claims\)/,
+    );
+  });
+
+  it('should reject a suite with metrics whose cases run different numbers of times', async () => {
+    // Arrange
+    const fake = scripted('Hello Lucía');
+    // Act & Assert
+    await assert.rejects(
+      runMetrics([refundCase({ n: 4 }), refundCase({ id: 'case-b' })], fake.subject),
+      /same number of times/,
+    );
+    assert.equal(fake.calls.length, 0);
+  });
+
+  it('should reject a metric that is not a function as a harness fault', async () => {
+    // Arrange
+    const fake = scripted('Hello Lucía');
+    // Act & Assert
+    await assert.rejects(
+      runMetrics([refundCase()], fake.subject, {}, { recall: 0.9 as never }),
+      /metric "recall" must be a function/,
+    );
+  });
+
+  it('should reject an empty metrics declaration as a harness fault', async () => {
+    // Arrange
+    const fake = scripted('Hello Lucía');
+    // Act & Assert
+    await assert.rejects(runMetrics([refundCase()], fake.subject, {}, {}), /declares no metric/);
+  });
+
+  it('should record the sorted ids of the cases each metric measured', async () => {
+    // Arrange
+    const fake = scripted('Hello Lucía');
+    // Act
+    const report = await runMetrics([refundCase(), refundCase({ id: 'case-b' })], fake.subject);
+    // Assert
+    assert.deepEqual(report.metrics![0].caseIds, ['case-b', 'case-refund']);
+  });
+
+  it('should ungate a metric whose baseline measured another set of cases of the same size', async () => {
+    // Arrange
+    const fake = scripted('Hello Lucía');
+    const baseline = metricBaseline([1, 1, 1], 3, undefined, ['case-c', 'case-refund']);
+    // Act
+    const report = await runMetrics([refundCase(), refundCase({ id: 'case-b' })], fake.subject, {
+      baseline,
+    });
+    // Assert
+    assert.equal(report.metrics![0].verdict, 'ungated');
+    assert.match(report.metrics![0].reason!, /^case mismatch: /);
+    assert.equal(report.status, 'ungated');
+  });
+
+  it('should ungate a metric whose baseline measured fewer cases than this run', async () => {
+    // Arrange
+    const fake = scripted('Hello Lucía');
+    const baseline = metricBaseline([1, 1, 1], 3, undefined, ['case-refund']);
+    // Act
+    const report = await runMetrics([refundCase(), refundCase({ id: 'case-b' })], fake.subject, {
+      baseline,
+    });
+    // Assert
+    assert.deepEqual(
+      { verdict: report.metrics![0].verdict, threshold: report.metrics![0].threshold },
+      { verdict: 'ungated', threshold: null },
+    );
+    assert.match(report.metrics![0].reason!, /^case mismatch: /);
+  });
+
+  it('should stop with a harness fault when a metric reads an assertion its case does not declare', async () => {
+    // Arrange
+    const fake = scripted('Hello Lucía');
+    const misspelled: Metric<string> = (run) =>
+      run.filter((o) => !o.kept('mustNot: promises a refnd')).length / run.length;
+    // Act & Assert
+    await assert.rejects(
+      runMetrics(
+        [refundCase(), refundCase({ id: 'case-b' })],
+        fake.subject,
+        { baseline: metricBaseline([1, 1, 1], 3, undefined, twoCases) },
+        { named: misspelled },
+      ),
+      /declares no assertion "mustNot: promises a refnd"/,
+    );
+  });
+
+  it('should leave a metric ungated as incomplete, not failed, when a run has an unmeasured case', async () => {
+    // Arrange
+    let call = 0;
+    const subject = async () => {
+      if (++call <= 2) throw new Error('rate limited');
+      return 'Hello Lucía';
+    };
+    // Act
+    const report = await runMetrics([refundCase(), refundCase({ id: 'case-b' })], subject, {
+      baseline: metricBaseline([1, 1, 1], 3, undefined, twoCases),
+    });
+    // Assert
+    assert.deepEqual(
+      {
+        samples: report.metrics![0].samples,
+        verdict: report.metrics![0].verdict,
+        threshold: report.metrics![0].threshold,
+      },
+      { samples: [0, 0, 1], verdict: 'ungated', threshold: null },
+    );
+    assert.match(report.metrics![0].reason!, /^incomplete: /);
+    assert.equal(report.status, 'incomplete');
+  });
+
+  it('should stop with a harness fault when a metric mutates the outcome it is given', async () => {
+    // Arrange
+    const claims = (raw: unknown) => ({ claims: [String(raw)] });
+    const mutating: Metric<{ claims: string[] }> = (run) => {
+      run[0].output.claims.push('invented');
+      return 1;
+    };
+    // Act & Assert
+    await assert.rejects(
+      runSuite(
+        {
+          name: 'demo',
+          cases: [
+            {
+              id: 'case-a',
+              input: () => 'x',
+              must: [{ label: 'any', check: () => true }],
+              mustNot: [],
+            },
+          ],
+          subject: async () => 'claim',
+          parse: claims,
+          metrics: { mutating },
+        },
+        { timeoutMs: 50 },
+      ),
+      /metric "mutating" threw/,
+    );
+  });
+
+  it('should stop with a harness fault when a metric reorders the run it is given', async () => {
+    // Arrange
+    const fake = scripted('Hello Lucía');
+    const reordering: Metric<string> = (run) => {
+      run.reverse();
+      return 1;
+    };
+    // Act & Assert
+    await assert.rejects(
+      runMetrics([refundCase(), refundCase({ id: 'case-b' })], fake.subject, {}, { reordering }),
+      /metric "reordering" threw/,
+    );
+  });
+
+  it('should stop with a harness fault when a metric rewrites a case outcome', async () => {
+    // Arrange
+    const fake = scripted('Hello Lucía');
+    const relabelling: Metric<string> = (run) => {
+      run[0].caseId = 'case-b';
+      return 1;
+    };
+    // Act & Assert
+    await assert.rejects(
+      runMetrics([refundCase()], fake.subject, {}, { relabelling }),
+      /metric "relabelling" threw/,
+    );
+  });
+
+  it('should stop with a harness fault when a metric suite parses an output that is not plain data', async () => {
+    // Arrange
+    const withFunction = () => ({ verdict: () => 'ok' });
+    // Act & Assert
+    await assert.rejects(
+      runSuite(
+        {
+          name: 'demo',
+          cases: [
+            {
+              id: 'case-a',
+              input: () => 'x',
+              must: [{ label: 'any', check: () => true }],
+              mustNot: [],
+            },
+          ],
+          subject: async () => 'claim',
+          parse: withFunction,
+          metrics: { any: () => 1 },
+        },
+        { timeoutMs: 50 },
+      ),
+      /not plain data/,
+    );
+  });
+
+  it('should state in the policy that a case passes on its measured runs and its safety alone', async () => {
+    // Arrange
+    const fake = scripted('Hello Lucía');
+    // Act
+    const report = await runMetrics([refundCase()], fake.subject);
+    // Assert
+    assert.match(report.policy.casePassed, /every mustNot kept.*must rates are diagnostics/);
   });
 });

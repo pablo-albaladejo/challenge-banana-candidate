@@ -30,4 +30,26 @@ describe('example suite', () => {
     assert.equal(report.complete, true);
     assert.deepEqual(report.model, { providers: [], models: [] });
   });
+
+  it('should gate its metric on its own three A/A runs and keep the must rates as diagnostics', async () => {
+    // Arrange
+    const model = gatewayModel();
+    const runnable = { ...suite, subject: suite.subject(model) };
+    const aa = [];
+    for (let i = 0; i < 3; i++)
+      aa.push(await runSuite(runnable, { aa: true, now: () => Date.UTC(2026, 9, 11, 11, 0, i) }));
+    // Act
+    const report = await runSuite(runnable, { baseline: baselineFromReports(aa) });
+    // Assert
+    assert.deepEqual(
+      report.metrics!.map((m) => [m.name, m.rate, m.threshold, m.verdict]),
+      [['greets by name', 1, 0.5, 'pass']],
+    );
+    assert.deepEqual(
+      report.cases.flatMap((c) =>
+        c.assertions.filter((a) => a.kind === 'must').map((a) => a.verdict),
+      ),
+      ['diagnostic', 'diagnostic'],
+    );
+  });
 });
