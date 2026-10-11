@@ -36,7 +36,7 @@ describe('Transfers', () => {
     await expect(page.getByRole('status')).toContainText('Review the proposal');
     expect((await bankSnapshot()).operations.filter((o) => o.concept === concept)).toHaveLength(0);
     // Act
-    await page.getByRole('button', { name: 'Confirm these details' }).click();
+    await page.getByRole('button', { name: 'Confirm these details', exact: true }).click();
     // Assert
     await expect(page.getByRole('status')).toContainText('Transfer confirmed and completed');
     const booked = (await bankSnapshot()).operations.filter((o) => o.concept === concept);
@@ -198,7 +198,7 @@ describe('Rejected transfer', () => {
     await page.getByRole('button', { name: 'Send transfer' }).click();
     await expect(notice).toContainText('Review the proposal');
     // Act
-    await page.getByRole('button', { name: 'Confirm these details' }).click();
+    await page.getByRole('button', { name: 'Confirm these details anyway', exact: true }).click();
     // Assert
     await expect(notice).toContainText('Insufficient funds');
     await notice.getByRole('button', { name: 'Dismiss notice' }).click();
@@ -232,8 +232,31 @@ describe('Pre-flight checks', () => {
     const card = page.locator('.approvals > div').filter({ hasText: concept });
     await expect(card).toContainText(`will have EUR ${after}`);
     await expect(card).toContainText('larger than any payment from your accounts');
-    await expect(card).not.toContainText('You have not sent money');
-    await expect(card.getByRole('button', { name: 'Confirm these details' })).toBeEnabled();
+    await expect(card).not.toContainText('has no record of a completed transfer');
+    await expect(
+      card.getByRole('button', { name: 'Confirm these details', exact: true }),
+    ).toBeEnabled();
     expect((await bankSnapshot()).operations.filter((o) => o.concept === concept)).toHaveLength(0);
+  });
+  it('should relabel the confirm button but keep it enabled when a check is a blocker', async ({
+    page,
+  }) => {
+    // Arrange: more than Diego's balance.
+    const concept = `E2E over balance ${Date.now()}`;
+    const [source] = (await bankSnapshot()).accounts.filter((a) => a.id === accounts.diego);
+    await openAs(page, 'Diego Salas');
+    await page.getByRole('navigation').getByRole('button', { name: 'Transfers' }).click();
+    await page.getByLabel('Recipient').selectOption({ value: accounts.lucia });
+    await page.getByLabel('Amount in euros').fill(String(source.balanceCents / 100 + 100));
+    await page.getByPlaceholder('What is this transfer for?').fill(concept);
+    // Act
+    await page.getByRole('button', { name: 'Send transfer' }).click();
+    // Assert
+    const card = page.locator('.approvals > div').filter({ hasText: concept });
+    await expect(card).toContainText('so the bank is likely to decline it');
+    await expect(card).toContainText('Blocker:');
+    await expect(
+      card.getByRole('button', { name: 'Confirm these details anyway', exact: true }),
+    ).toBeEnabled();
   });
 });

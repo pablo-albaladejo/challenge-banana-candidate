@@ -115,4 +115,27 @@ describe('approvals repository', () => {
     assert.deepEqual(forIntent?.checks, []);
     assert.deepEqual(ofCustomer?.checks, []);
   });
+  it('should read stored checks that are not valid JSON as having none', () => {
+    // Arrange
+    const approval = approvalFactory.build();
+    appDb()
+      .prepare(
+        'INSERT INTO approvals(id,user_id,intent_id,payload,expires_at,consumed_at,checks) VALUES(?,?,?,?,?,NULL,?)',
+      )
+      .run(
+        approval.id,
+        approval.userId,
+        approval.intentId,
+        approval.payload,
+        approval.expiresAt,
+        '[{not json',
+      );
+    const now = new Date().toISOString();
+    // Act
+    const forIntent = liveApprovalFor(approval.intentId, approval.userId, now);
+    const ofCustomer = liveApprovalsOf(approval.userId, now).find((a) => a.id === approval.id);
+    // Assert
+    assert.deepEqual(forIntent?.checks, []);
+    assert.deepEqual(ofCustomer?.checks, []);
+  });
 });

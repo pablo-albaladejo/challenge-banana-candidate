@@ -1,13 +1,22 @@
 import { statement } from '../../platform/db/statement';
 import type { ApprovalRow, LiveApproval, NewApproval } from '../domain/approval';
+import type { PreflightCheck } from '../domain/preflight';
 import type { ApprovalRepository } from '../application/ports/approval-repository';
 export type { ApprovalRow, LiveApproval, NewApproval };
 const columns = 'id,user_id,intent_id,payload,expires_at,consumed_at';
-/** A row with its `checks` JSON parsed; NULL (rows older than migration 3) reads as no checks. */
-const parsed = <T extends { checks: string | null }>(row: T) => ({
-  ...row,
-  checks: row.checks === null ? [] : JSON.parse(row.checks),
-});
+/**
+ * A row with its `checks` JSON parsed; NULL (rows older than migration 3) or unreadable JSON reads
+ * as no checks, so one bad row never breaks the proposals list or the dashboard.
+ */
+function parsed<T extends { checks: string | null }>(row: T) {
+  let checks: PreflightCheck[] = [];
+  try {
+    checks = row.checks === null ? [] : JSON.parse(row.checks);
+  } catch {
+    // Unreadable checks: shown as none.
+  }
+  return { ...row, checks };
+}
 export function insertApproval(a: NewApproval) {
   statement(
     'INSERT INTO approvals(id,user_id,intent_id,payload,expires_at,consumed_at,checks) VALUES(?,?,?,?,?,NULL,?)',

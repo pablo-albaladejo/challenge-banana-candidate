@@ -13,7 +13,7 @@ export function ApprovalsPanel({
   onConfirm: (id: string) => void;
 }) {
   return (
-    <section className="panel approvals">
+    <section className="panel approvals" aria-live="polite">
       <h2>Proposals awaiting confirmation</h2>
       {approvals.map((a: AnyRecord) => {
         const checks: AnyRecord[] = a.checks ?? [];

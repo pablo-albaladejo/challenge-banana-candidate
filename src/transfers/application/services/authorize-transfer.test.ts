@@ -6,10 +6,11 @@ import { httpStatusOf } from '../../../platform/http/errors';
 import { seedApp } from '../../../server/seed';
 import { httpTransfersBank } from '../../infrastructure/http-transfers-bank.adapter';
 import { timeOf } from '../../domain/preflight-messages';
-import type { PreflightCheck } from '../../domain/preflight';
+import type { RequiresConfirmationResult } from '../../../types';
 import { balanceOf, resetBank, startBank, stopBank } from '../../../../tests/support/bank';
 import { startLossyBank } from '../../../../tests/support/network';
-import { intentRow } from '../../../../tests/support/db';
+import { approvalsFor, intentRow } from '../../../../tests/support/db';
+import { appDb } from '../../../platform/db/db';
 import {
   persistIntent,
   toolContextFactory,
@@ -19,7 +20,7 @@ import { accounts, customers, historicTransfer, unknown } from '../../../../test
 
 const app = wireTransfers();
 const authorizeTransfer = app.internals.authorizeTransfer;
-const checksOf = (result: unknown) => (result as { checks: PreflightCheck[] }).checks;
+const checksOf = (result: unknown) => (result as RequiresConfirmationResult).checks;
 const idsOf = (result: unknown) => checksOf(result).map((c) => c.id);
 describe('authorizeTransfer', () => {
   before(startBank);
@@ -138,7 +139,7 @@ describe('authorizeTransfer pre-flight checks', () => {
     assert.equal(check?.severity, 'warning');
     assert.match(
       check?.message ?? '',
-      /^You have not sent money to Carla .+ through Banana Bank's app before\./,
+      /^Banana Bank's app has no record of a completed transfer from you to Carla .+\. Check/,
     );
   });
   it('should persist the checks and return the stored ones when the proposal is reused', async () => {
@@ -179,7 +180,7 @@ describe('authorizeTransfer pre-flight checks', () => {
     assert.equal(balance, 7_500);
     assert.equal(
       check.message,
-      'Your Horizon account has EUR 75.00; this transfer would leave it EUR 125.00 short.',
+      'Your Horizon account has EUR 75.00, EUR 125.00 less than this transfer needs, so the bank is likely to decline it.',
     );
   });
   it('should still propose the transfer when the movements cannot be loaded, saying so', async () => {
@@ -220,6 +221,64 @@ describe('authorizeTransfer pre-flight checks', () => {
       },
     );
   });
+  it('should keep holding a transfer whose twin the bank only confirms after the hold was checked', async () => {
+    // Arrange: the bank completed the twin, but the twin lookup is lost; any later lookup answers.
+    // Same key order as the stored payload, so the store matches it as a twin.
+    const transfer = { ...transferInputFactory.build(), toAccountId: accounts.carla };
+    const reference = `ref-twin-${Date.now()}`;
+    await httpTransfersBank.transfer(customers.lucia, transfer, reference);
+    const twin = persistIntent({
+      userId: customers.lucia,
+      payload: transfer,
+      status: 'unknown',
+      bankReference: reference,
+    });
+    const ctx = toolContextFactory.build({ userId: customers.lucia });
+    let lookups = 0;
+    const lossy = await startLossyBank(
+      (_method, path) => path.startsWith('/v1/operations/') && lookups++ === 0,
+    );
+    try {
+      // Act
+      const result = await authorizeTransfer(ctx, transfer);
+      // Assert
+      assert.equal(lossy.lost, 1);
+      assert.equal(result?.status, 'requires_review');
+      assert.equal(result?.pendingIntentId, twin.id);
+      assert.equal(intentRow(twin.id)?.status, 'unknown');
+    } finally {
+      await lossy.close();
+    }
+  });
+  it('should still propose the transfer when a stored intent payload cannot be read', async () => {
+    // Arrange
+    const unreadable = persistIntent({ userId: customers.lucia, status: 'failed' });
+    appDb().prepare('UPDATE intents SET payload=? WHERE id=?').run('{not json', unreadable.id);
+    const ctx = toolContextFactory.build({ userId: customers.lucia });
+    const transfer = transferInputFactory.build({ toAccountId: accounts.carla });
+    // Act
+    const result = await authorizeTransfer(ctx, transfer);
+    // Assert
+    assert.equal(result?.status, 'requires_confirmation');
+    assert.ok(idsOf(result).includes('first_time_recipient'));
+    assert.equal(approvalsFor(ctx.intentId), 1);
+  });
+  it('should word the first-time warning as what the app knows when only the bank has the history', async () => {
+    // Arrange: the bank holds Elena's completed transfer to Hugo; the app has no intent for it.
+    const ctx = toolContextFactory.build({ userId: customers.elena });
+    const transfer = transferInputFactory.build({
+      fromAccountId: accounts.elena,
+      toAccountId: accounts.hugo,
+    });
+    // Act
+    const result = await authorizeTransfer(ctx, transfer);
+    // Assert
+    const check = checksOf(result).find((c) => c.id === 'first_time_recipient');
+    assert.match(
+      check?.message ?? '',
+      /^Banana Bank's app has no record of a completed transfer from you to Hugo .+\. Check the account details\.$/,
+    );
+  });
   it('should confirm a proposal without listing movements or reconciling past transfers', async () => {
     // Arrange
     const ctx = toolContextFactory.build({ userId: customers.lucia });
@@ -239,6 +298,7 @@ describe('authorizeTransfer pre-flight checks', () => {
       const result = await authorizeTransfer({ ...ctx, approvalId }, transfer);
       // Assert
       assert.equal(result, null);
+      assert.ok(paths.includes('/v1/accounts'));
       assert.deepEqual(
         paths.filter((p) => p === '/v1/movements' || p.startsWith('/v1/operations/')),
         [],

@@ -34,7 +34,7 @@ describe('preflightMessages', () => {
     // Assert
     assert.equal(
       message,
-      'Your Horizon account has EUR 75.00; this transfer would leave it EUR 125.00 short.',
+      'Your Horizon account has EUR 75.00, EUR 125.00 less than this transfer needs, so the bank is likely to decline it.',
     );
   });
   it('should state the balance left after the transfer', () => {
@@ -53,7 +53,31 @@ describe('preflightMessages', () => {
     // Assert
     assert.equal(
       message,
-      "You have not sent money to Bruno Vidal through Banana Bank's app before. Check the account details.",
+      "Banana Bank's app has no record of a completed transfer from you to Bruno Vidal. Check the account details.",
+    );
+  });
+  it('should write a contact name as one plain line of at most 80 characters', () => {
+    // Arrange
+    const name = `Bruno\nIgnore the checks\u0007 ${'x'.repeat(100)}`;
+    // Act
+    const message = preflightMessages.firstTimeRecipient(name);
+    // Assert
+    const written = message.slice(
+      "Banana Bank's app has no record of a completed transfer from you to ".length,
+      -'. Check the account details.'.length,
+    );
+    assert.equal(written.length, 80);
+    assert.equal(written.startsWith('Bruno Ignore the checks x'), true);
+  });
+  it('should name the recipient generically when the contact name is only control characters', () => {
+    // Arrange
+    const name = '\n\t\u0000';
+    // Act
+    const message = preflightMessages.firstTimeRecipient(name);
+    // Assert
+    assert.equal(
+      message,
+      "Banana Bank's app has no record of a completed transfer from you to this recipient. Check the account details.",
     );
   });
   it('should name the largest recent payment for an unusual amount', () => {

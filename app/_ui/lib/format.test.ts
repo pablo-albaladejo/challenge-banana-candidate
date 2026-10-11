@@ -41,11 +41,11 @@ describe('date', () => {
 });
 
 describe('time', () => {
-  it('should show the 24-hour time of a timestamp', () => {
+  it('should show the 24-hour time of a timestamp in Europe/Madrid', () => {
     // Arrange
-    const localTimestamp = '2026-09-24T21:05:00';
+    const timestamp = '2026-09-24T19:05:00.000Z';
     // Act
-    const text = time(localTimestamp);
+    const text = time(timestamp);
     // Assert
     assert.equal(text, '21:05');
   });

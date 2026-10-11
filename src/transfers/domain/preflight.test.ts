@@ -82,7 +82,7 @@ describe('preflightChecks', () => {
       assert.equal(check?.severity, 'blocker');
       assert.equal(
         check?.message,
-        'Your Horizon account has EUR 75.00; this transfer would leave it EUR 125.00 short.',
+        'Your Horizon account has EUR 75.00, EUR 125.00 less than this transfer needs, so the bank is likely to decline it.',
       );
     });
   });
@@ -112,7 +112,7 @@ describe('preflightChecks', () => {
       assert.deepEqual(check, {
         id: 'first_time_recipient',
         severity: 'warning',
-        message: `You have not sent money to ${input.contacts[0].name} through Banana Bank's app before. Check the account details.`,
+        message: `Banana Bank's app has no record of a completed transfer from you to ${input.contacts[0].name}. Check the account details.`,
         source: { kind: 'history', what: 'completed_transfers', sampleSize: 1 },
       });
     });
@@ -143,8 +143,17 @@ describe('preflightChecks', () => {
       // Assert
       assert.equal(
         check?.message,
-        "You have not sent money to this recipient through Banana Bank's app before. Check the account details.",
+        "Banana Bank's app has no record of a completed transfer from you to this recipient. Check the account details.",
       );
+    });
+    it('should still warn when a stored intent payload cannot be read', () => {
+      // Arrange
+      const unreadable = { ...intentTo(accounts.bruno, 'completed'), payload: '{not json' };
+      const input = inputOf({ intents: [unreadable] });
+      // Act
+      const check = checkOf(preflightChecks(input), 'first_time_recipient');
+      // Assert
+      assert.equal(check?.severity, 'warning');
     });
     it('should trust a recipient the customer already paid through the app', () => {
       // Arrange
@@ -311,6 +320,30 @@ describe('firstTimeReconcileCandidates', () => {
     // Assert
     assert.equal(ids.length, FIRST_TIME_RECONCILE_LIMIT);
     assert.deepEqual(ids, [toBruno[0].id, toBruno[2].id, toBruno[3].id]);
+  });
+  it('should leave out the excluded intents: the one asking and its pending twins', () => {
+    // Arrange
+    const [asking, twin, other] = [
+      intentTo(accounts.bruno, 'unknown'),
+      intentTo(accounts.bruno, 'unknown'),
+      intentTo(accounts.bruno, 'failed'),
+    ];
+    // Act
+    const ids = firstTimeReconcileCandidates([asking, twin, other], accounts.bruno, [
+      asking.id,
+      twin.id,
+    ]);
+    // Assert
+    assert.deepEqual(ids, [other.id]);
+  });
+  it('should skip a stored intent whose payload cannot be read', () => {
+    // Arrange
+    const unreadable = { ...intentTo(accounts.bruno, 'failed'), payload: '{not json' };
+    const readable = intentTo(accounts.bruno, 'failed');
+    // Act
+    const ids = firstTimeReconcileCandidates([unreadable, readable], accounts.bruno);
+    // Assert
+    assert.deepEqual(ids, [readable.id]);
   });
   it('should reconcile nothing once a completed intent to the recipient exists', () => {
     // Arrange

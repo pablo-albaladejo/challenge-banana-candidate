@@ -6,6 +6,8 @@
   --forest: #194f43;
   --lime: #f5d94b;
   --white: #fff;
+  --danger: #9c4335;
+  --caution: #7a5b00;
   --font: Arial, Helvetica, sans-serif;
 }
 * {
@@ -894,10 +896,18 @@ label select {
   color: var(--muted);
 }
 .preflight-check.blocker {
-  color: #9c4335;
+  color: var(--danger);
 }
 .preflight-check.warning {
-  color: #7a5b00;
+  color: var(--caution);
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .case-count {
   padding: 16px 22px;

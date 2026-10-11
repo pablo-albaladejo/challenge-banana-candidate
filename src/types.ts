@@ -1,3 +1,4 @@
+import type { PreflightCheck } from './transfers/domain/preflight';
 export type Person = {
   id: string;
   name: string;
@@ -44,6 +45,13 @@ export type RequiresReviewResult = {
   intentId: string;
   error: string;
   [key: string]: unknown;
+};
+/** A new proposal awaiting the customer's confirmation, with its code-written pre-flight checks. */
+export type RequiresConfirmationResult = {
+  status: 'requires_confirmation';
+  approval: { id: string; payload: TransferInput; expiresAt: string };
+  intentId: string;
+  checks: PreflightCheck[];
 };
 export type ActionResult = RequiresReviewResult | { status: string; [key: string]: unknown };
 export type DocumentRecord = {

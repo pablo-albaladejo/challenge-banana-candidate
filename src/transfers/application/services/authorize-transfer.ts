@@ -1,12 +1,22 @@
 import { ConflictError } from '../../../shared/domain/errors';
 import { approvalExpiresAt } from '../../domain/approval';
 import { heldBy } from '../../domain/holds';
-import { firstTimeReconcileCandidates, preflightChecks } from '../../domain/preflight';
+import {
+  firstTimeReconcileCandidates,
+  preflightChecks,
+  type PreflightCheck,
+} from '../../domain/preflight';
 import { assertKnownDestination, assertOwnsSource, payloadOf } from '../../domain/transfer';
 import type { Clock } from '../../../shared/ports/clock';
 import type { Ids } from '../../../shared/ports/ids';
 import type { UnitOfWork } from '../../../shared/ports/unit-of-work';
-import type { ActionResult, ToolContext, TransferInput } from '../../../types';
+import type {
+  RequiresConfirmationResult,
+  RequiresReviewResult,
+  ToolContext,
+  TransferInput,
+} from '../../../types';
+import type { IntentRow } from '../../domain/intent';
 import type { ApprovalRepository } from '../ports/approval-repository';
 import type { IntentRepository } from '../ports/intent-repository';
 import type { TransfersBank } from '../ports/transfers-bank';
@@ -38,21 +48,45 @@ export function makeAuthorizeTransfer(deps: Deps) {
     );
   }
   /**
-   * The advisory inputs of the pre-flight checks, gathered concurrently: the movements, and a
-   * bounded reconcile of the failed/unknown intents to the recipient, so a stored `failed` that the
-   * bank completed is not read as "never paid". `null` movements: the bank could not list them.
+   * The advisory inputs of the pre-flight checks: the customer's intents and movements, and a
+   * bounded reconcile of the failed/unknown intents to the recipient, run concurrently with the
+   * movements, so a stored `failed` that the bank completed is not read as "never paid". The intent
+   * asking and its pending twins are left to the hold. Advisory: a store or bank that fails here
+   * leaves the checks with less to go on, never the proposal failing. `null` movements: the bank
+   * could not list them.
    */
-  async function advisoryInputs(ctx: ToolContext, input: TransferInput, ownIds: string[]) {
-    const candidates = ownIds.includes(input.toAccountId)
-      ? []
-      : firstTimeReconcileCandidates(intents.ofCustomer(ctx.userId), input.toAccountId);
+  async function advisoryInputs(
+    ctx: ToolContext,
+    input: TransferInput,
+    payload: string,
+    ownIds: string[],
+  ) {
+    let read: IntentRow[] = [];
+    let candidates: string[] = [];
+    try {
+      read = intents.ofCustomer(ctx.userId);
+      const twins = intents.pendingTwinsOf(ctx.userId, payload, ctx.intentId);
+      if (!ownIds.includes(input.toAccountId))
+        candidates = firstTimeReconcileCandidates(read, input.toAccountId, [
+          ctx.intentId,
+          ...twins.map((t) => t.id),
+        ]);
+    } catch {
+      // Unreadable history: the checks go on without it.
+    }
     const [listed] = await Promise.allSettled([
       bank.movements(ctx.userId),
       Promise.allSettled(
         candidates.map((intentId) => reconcileIntent({ userId: ctx.userId, intentId })),
       ),
     ]);
-    return listed.status === 'fulfilled' ? listed.value : null;
+    // Read again only when a reconcile may have settled one of them.
+    try {
+      if (candidates.length) read = intents.ofCustomer(ctx.userId);
+    } catch {
+      // Keep the first read.
+    }
+    return { intents: read, movements: listed.status === 'fulfilled' ? listed.value : null };
   }
   /** The hold on this transfer, read from the store as it is now (see `heldBy`). */
   const holdOf = (ctx: ToolContext, payload: string) =>
@@ -61,8 +95,13 @@ export function makeAuthorizeTransfer(deps: Deps) {
       ctx.intentId,
       ctx.overridePendingIntentId,
     );
-  return async (ctx: ToolContext, input: TransferInput): Promise<ActionResult | null> => {
+  return async (
+    ctx: ToolContext,
+    input: TransferInput,
+  ): Promise<RequiresReviewResult | RequiresConfirmationResult | null> => {
     const accounts = await bank.accounts(ctx.userId);
+    // When the balance the checks quote was read.
+    const asOf = clock.now().toISOString();
     assertOwnsSource(accounts, input);
     const contacts = await bank.contacts(ctx.userId);
     assertKnownDestination(accounts, contacts, input);
@@ -75,11 +114,12 @@ export function makeAuthorizeTransfer(deps: Deps) {
     await reconcileTwins(ctx, payload);
     const { approvalId } = ctx;
     // Advisory, proposal only: confirming makes no movements call and no first-time reconcile.
-    const movements = approvalId
+    const advisory = approvalId
       ? null
       : await advisoryInputs(
           ctx,
           input,
+          payload,
           accounts.map((a) => a.id),
         );
     // Taken after the bank awaits, so the approval expiry and the dispatch start are not early.
@@ -106,6 +146,23 @@ export function makeAuthorizeTransfer(deps: Deps) {
     const twins = intents.pendingTwinsOf(ctx.userId, payload, ctx.intentId);
     const held = heldBy(twins, ctx.intentId, ctx.overridePendingIntentId);
     if (held) return held;
+    // Computed before the status moves, and fail-soft, so a check that throws can never leave the
+    // intent awaiting confirmation without an approval.
+    let checks: PreflightCheck[] = [];
+    try {
+      checks = preflightChecks({
+        transfer: input,
+        accounts,
+        contacts,
+        intents: advisory?.intents ?? [],
+        movements: advisory?.movements ?? null,
+        // Not held with a twin left means the customer sent past the newest one.
+        overriddenTwin: twins[0] ?? null,
+        asOf,
+      });
+    } catch {
+      // The checks are advisory: the proposal goes on without them.
+    }
     // The status first: if a confirmation moved the intent on meanwhile, this throws before an
     // approval nobody can use is written.
     transition(ctx.intentId, 'requires_confirmation');
@@ -113,16 +170,6 @@ export function makeAuthorizeTransfer(deps: Deps) {
     // see the same checks for the same approval.
     let approval = approvals.liveFor(ctx.intentId, ctx.userId, now);
     if (!approval) {
-      const checks = preflightChecks({
-        transfer: input,
-        accounts,
-        contacts,
-        intents: intents.ofCustomer(ctx.userId),
-        movements,
-        // Not held with a twin left means the customer sent past the newest one.
-        overriddenTwin: twins[0] ?? null,
-        asOf: now,
-      });
       approval = { id: ids.uuid(), payload, expires_at: approvalExpiresAt(clock.now()), checks };
       approvals.insert({
         id: approval.id,

@@ -46,8 +46,14 @@ export type PreflightInput = {
   asOf: string;
 };
 
-const toAccountOf = (intent: PreflightIntent): unknown =>
-  (JSON.parse(intent.payload) as Partial<TransferInput>).toAccountId;
+/** The recipient of a stored intent; `undefined` when its payload cannot be read. */
+function toAccountOf(intent: PreflightIntent): unknown {
+  try {
+    return (JSON.parse(intent.payload) as Partial<TransferInput> | null)?.toAccountId;
+  } catch {
+    return undefined;
+  }
+}
 const paidTo = (intents: PreflightIntent[], toAccountId: string) =>
   intents.some((i) => i.status === 'completed' && toAccountOf(i) === toAccountId);
 
@@ -55,13 +61,22 @@ const paidTo = (intents: PreflightIntent[], toAccountId: string) =>
  * The intents to reconcile before deciding "first time": a stored `failed` or `unknown` can hide a
  * payment the bank completed (the historic Lucía → Bruno transfer). None once a `completed` intent
  * to the recipient exists; otherwise the newest `FIRST_TIME_RECONCILE_LIMIT` of them. `intents`
- * are the customer's, newest first.
+ * are the customer's, newest first. `excludedIds` (the intent asking and its pending twins) are
+ * never reconciled here: settling a twin is the hold's job, and doing it after the hold was read
+ * would turn a held transfer into a fresh proposal.
  */
-export function firstTimeReconcileCandidates(intents: PreflightIntent[], toAccountId: string) {
+export function firstTimeReconcileCandidates(
+  intents: PreflightIntent[],
+  toAccountId: string,
+  excludedIds: string[] = [],
+) {
   if (paidTo(intents, toAccountId)) return [];
   return intents
     .filter(
-      (i) => (i.status === 'failed' || i.status === 'unknown') && toAccountOf(i) === toAccountId,
+      (i) =>
+        (i.status === 'failed' || i.status === 'unknown') &&
+        !excludedIds.includes(i.id) &&
+        toAccountOf(i) === toAccountId,
     )
     .slice(0, FIRST_TIME_RECONCILE_LIMIT)
     .map((i) => i.id);
