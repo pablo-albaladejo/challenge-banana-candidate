@@ -7,6 +7,7 @@ import { faker } from '@faker-js/faker';
 import { appDb } from '../../src/platform/db/db';
 import type { IntentRow, NewIntent } from '../../src/transfers/domain/intent';
 import type {
+  Account,
   Chunk,
   DocumentRecord,
   SearchResult,
@@ -44,6 +45,14 @@ export const transferInputFactory = new Factory<TransferInput>()
     faker.number.int({ min: 100, max: Math.floor(money.lowestBalanceCents / 2) }),
   )
   .attr('concept', () => faker.commerce.productName());
+
+/** A bank account of lucia's, as `GET /v1/accounts` lists it; the balance covers any default transfer. */
+export const accountFactory = new Factory<Account>()
+  .attr('id', accounts.lucia)
+  .attr('userId', customers.lucia)
+  .attr('label', 'Aurora account')
+  .attr('iban', () => faker.finance.iban())
+  .attr('balanceCents', () => faker.number.int({ min: money.lowestBalanceCents, max: 500_000 }));
 
 export type IntentStatus =
   | 'requires_confirmation'
@@ -202,7 +211,8 @@ export const approvalFactory = new Factory<NewApproval>()
   .attr('userId', customers.lucia)
   .attr('intentId', () => `intent-${faker.string.uuid()}`)
   .attr('payload', () => JSON.stringify(transferInputFactory.build()))
-  .attr('expiresAt', () => new Date(Date.now() + 60_000).toISOString());
+  .attr('expiresAt', () => new Date(Date.now() + 60_000).toISOString())
+  .attr('checks', () => []);
 
 /** An open support case of lucia's in a conversation outside the seed. */
 export const incidentFactory = new Factory<NewIncident>()

@@ -7,6 +7,8 @@ import {
   liveApprovalFor,
   liveApprovalsOf,
 } from './sqlite-approvals.repo';
+import { faker } from '@faker-js/faker';
+import { appDb } from '../../platform/db/db';
 import { approvalFactory, transferInputFactory } from '../../../tests/fixtures/factories';
 
 describe('approvals repository', () => {
@@ -72,7 +74,45 @@ describe('approvals repository', () => {
       id: approval.id,
       payload: approval.payload,
       expires_at: approval.expiresAt,
+      checks: approval.checks,
     });
     assert.ok(ofCustomer.includes(approval.id));
+  });
+  it('should read back the stored pre-flight checks of a live approval', () => {
+    // Arrange
+    const approval = approvalFactory.build({
+      checks: [
+        {
+          id: 'pending_twin',
+          severity: 'warning',
+          message: faker.lorem.sentence(),
+          source: { kind: 'safeguard', id: 'P0-4' },
+        },
+      ],
+    });
+    insertApproval(approval);
+    const now = new Date().toISOString();
+    // Act
+    const forIntent = liveApprovalFor(approval.intentId, approval.userId, now);
+    const ofCustomer = liveApprovalsOf(approval.userId, now).find((a) => a.id === approval.id);
+    // Assert
+    assert.deepEqual(forIntent?.checks, approval.checks);
+    assert.deepEqual(ofCustomer?.checks, approval.checks);
+  });
+  it('should read an approval stored before pre-flight checks existed as having none', () => {
+    // Arrange: a row as migration 3 leaves it, with a NULL checks column.
+    const approval = approvalFactory.build();
+    appDb()
+      .prepare(
+        'INSERT INTO approvals(id,user_id,intent_id,payload,expires_at,consumed_at,checks) VALUES(?,?,?,?,?,NULL,NULL)',
+      )
+      .run(approval.id, approval.userId, approval.intentId, approval.payload, approval.expiresAt);
+    const now = new Date().toISOString();
+    // Act
+    const forIntent = liveApprovalFor(approval.intentId, approval.userId, now);
+    const ofCustomer = liveApprovalsOf(approval.userId, now).find((a) => a.id === approval.id);
+    // Assert
+    assert.deepEqual(forIntent?.checks, []);
+    assert.deepEqual(ofCustomer?.checks, []);
   });
 });

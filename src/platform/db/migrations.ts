@@ -24,6 +24,9 @@ export const migrations: Migration[] = [
   // 2: when an intent entered `processing`, so reconcile measures staleness from the dispatch start
   // instead of the proposal. Nullable: existing rows fall back to `created_at`.
   (db) => db.exec('ALTER TABLE intents ADD COLUMN dispatched_at TEXT'),
+  // 3: the pre-flight checks shown with a proposal (JSON), persisted so the card and the model
+  // always see the same checks. Nullable: approvals created before it read as no checks.
+  (db) => db.exec('ALTER TABLE approvals ADD COLUMN checks TEXT'),
 ];
 /**
  * Applies the pending migrations in order, each in its own IMMEDIATE transaction that re-reads

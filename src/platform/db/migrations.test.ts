@@ -137,6 +137,29 @@ describe('migrate', () => {
       before.map((row) => ({ ...row, dispatched_at: null })),
     );
   });
+  it('should add the pre-flight checks to the approvals of an upgraded database without losing them', () => {
+    // Arrange
+    const db = open();
+    db.exec(legacySchema);
+    db.prepare(
+      'INSERT INTO approvals(id,user_id,intent_id,payload,expires_at,consumed_at) VALUES(?,?,?,?,?,?)',
+    ).run(
+      `approval-${faker.string.uuid()}`,
+      customers.lucia,
+      `intent-${faker.string.uuid()}`,
+      '{}',
+      new Date().toISOString(),
+      null,
+    );
+    const before = db.prepare('SELECT * FROM approvals').all() as Record<string, unknown>[];
+    // Act
+    migrate(db);
+    // Assert
+    assert.deepEqual(
+      db.prepare('SELECT * FROM approvals').all(),
+      before.map((row) => ({ ...row, checks: null })),
+    );
+  });
   it('should leave an up-to-date database unchanged when it runs again', () => {
     // Arrange
     let runs = 0;

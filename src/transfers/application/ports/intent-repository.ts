@@ -8,6 +8,8 @@ export type IntentRepository = {
   ownedBy(id: string, userId: string): IntentRow | undefined;
   /** A conversation's intents, oldest first. */
   inConversation(conversationId: string): IntentRow[];
+  /** Every intent of a customer, newest first. */
+  ofCustomer(userId: string): IntentRow[];
   /** Intents of a conversation whose outcome the bank has not confirmed (`unknown`, `failed`). */
   unsettledIdsIn(conversationId: string): { id: string }[];
   /** Unsettled intents first, then `failed` ones that reached the bank since `failedSince`. */

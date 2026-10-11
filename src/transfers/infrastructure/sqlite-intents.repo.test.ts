@@ -7,6 +7,7 @@ import {
   intentById,
   intentOf,
   intentsIn,
+  intentsOfCustomer,
   pendingIntentsOf,
   pendingTwinsOf,
   unsettledIntentIds,
@@ -87,6 +88,22 @@ describe('intents repository', () => {
     const list = intentsIn(conversationId);
     // Assert
     assert.deepEqual(list, [intentRowOf(older), intentRowOf(newer)]);
+  });
+  it('should list every intent of a customer newest first', () => {
+    // Arrange
+    const owner = `customer-${faker.string.uuid()}`;
+    const older = intentFactory.build({ userId: owner, createdAt: '2026-09-01T10:00:00.000Z' });
+    const newer = intentFactory.build({
+      userId: owner,
+      status: 'completed',
+      createdAt: '2026-09-02T10:00:00.000Z',
+    });
+    const foreign = intentFactory.build({ userId: `customer-${faker.string.uuid()}` });
+    for (const intent of [older, newer, foreign]) insertIntent(storedIntent(intent));
+    // Act
+    const list = intentsOfCustomer(owner);
+    // Assert
+    assert.deepEqual(list, [intentRowOf(newer), intentRowOf(older)]);
   });
   it('should name the unknown and failed intents of a conversation as unsettled', () => {
     // Arrange

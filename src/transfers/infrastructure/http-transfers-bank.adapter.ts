@@ -14,6 +14,7 @@ async function translated<T>(call: Promise<T>): Promise<T> {
 export const httpTransfersBank: TransfersBank = {
   accounts: (userId) => translated(bank.accounts(userId)),
   contacts: (userId) => translated(bank.contacts(userId)),
+  movements: (userId) => translated(bank.movements(userId)),
   transfer: (userId, input, reference) => translated(bank.transfer(userId, input, reference)),
   operation: (userId, reference) => translated(bank.operation(userId, reference)),
 };

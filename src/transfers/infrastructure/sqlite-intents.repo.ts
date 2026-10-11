@@ -40,6 +40,12 @@ export function intentsIn(conversationId: string) {
     conversationId,
   ) as IntentRow[];
 }
+/** Every intent of a customer, newest first. */
+export function intentsOfCustomer(userId: string) {
+  return statement(
+    'SELECT * FROM intents WHERE user_id=? ORDER BY created_at DESC, rowid DESC',
+  ).all(userId) as IntentRow[];
+}
 /** Intents of a conversation whose outcome the bank has not confirmed (`unknown`, `failed`). */
 export function unsettledIntentIds(conversationId: string) {
   return statement(
@@ -107,6 +113,7 @@ export const sqliteIntents: IntentRepository = {
   byId: intentById,
   ownedBy: intentOf,
   inConversation: intentsIn,
+  ofCustomer: intentsOfCustomer,
   unsettledIdsIn: unsettledIntentIds,
   pendingOf: pendingIntentsOf,
   pendingTwinsOf,

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { httpTransfersBank } from './http-transfers-bank.adapter';
 import { BankFailure } from '../../shared/domain/bank-failure';
 import { resetBank, startBank, stopBank } from '../../../tests/support/bank';
-import { customers, historicTransfer, unknown } from '../../../tests/fixtures/world';
+import { accounts, customers, historicTransfer, unknown } from '../../../tests/fixtures/world';
 
 describe('httpTransfersBank', () => {
   before(startBank);
@@ -28,5 +28,16 @@ describe('httpTransfersBank', () => {
     const operation = await httpTransfersBank.operation(customers.lucia, reference);
     // Assert
     assert.equal(operation.id, historicTransfer.operationId);
+  });
+
+  it("should list the actor's movements across all their accounts", async () => {
+    // Arrange
+    const owned = [accounts.lucia, accounts.luciaSavings];
+    // Act
+    const movements = await httpTransfersBank.movements(customers.lucia);
+    // Assert
+    assert.ok(movements.length > 0);
+    assert.ok(movements.every((m) => owned.includes(m.accountId as (typeof owned)[number])));
+    assert.ok(movements.some((m) => m.amountCents === -historicTransfer.amountCents));
   });
 });

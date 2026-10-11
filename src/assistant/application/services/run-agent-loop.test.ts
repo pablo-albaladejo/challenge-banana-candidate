@@ -15,6 +15,7 @@ import { toolContextFactory, transferInputFactory } from '../../../../tests/fixt
 import { conversations } from '../../../../tests/fixtures/world';
 import { goldenToolDefinitions } from '../../../../tests/fixtures/tool-definitions';
 import { config } from '../../../platform/config';
+import { transfers } from '../../../transfers';
 
 const runLoop = wireAssistant().internals.runAgentLoop;
 /** A run in lucia's welcome conversation; the loop derives each tool call's intent from it. */
@@ -102,6 +103,28 @@ describe('runLoop', () => {
     assert.equal(intent.status, 'requires_confirmation');
     assert.equal(intent.run_id, current.runId);
     assert.equal(outputOf(fake, 1, 'call-transfer').status, 'requires_confirmation');
+  });
+
+  it('should relay the code-written pre-flight checks whatever the model then claims', async () => {
+    // Arrange: more than lucia holds, so the checks carry a blocker.
+    const current = run();
+    const input = transferInputFactory.build({ amountCents: 500_000 });
+    fake.script(
+      toolCall('transfer_money', input, 'call-transfer'),
+      reply('You have plenty of funds for this.'),
+    );
+    // Act
+    const result = await runLoop(current, 'Be helpful.', question());
+    // Assert
+    const output = outputOf(fake, 1, 'call-transfer');
+    const [stored] = transfers()
+      .listLiveProposals({ userId: current.userId })
+      .filter((a) => a.intent_id === `${current.runId}:call-transfer`);
+    assert.equal(result.answer, 'You have plenty of funds for this.');
+    assert.equal(output.status, 'requires_confirmation');
+    assert.equal(output.checks[0].severity, 'blocker');
+    assert.deepEqual(stored.checks, output.checks);
+    assert.equal(intentRow(`${current.runId}:call-transfer`)!.status, 'requires_confirmation');
   });
 
   it('should fail a transfer call whose arguments carry an override', async () => {
