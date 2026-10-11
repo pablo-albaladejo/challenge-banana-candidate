@@ -24,10 +24,18 @@ export type BankSnapshot = {
   movements: { id: string; accountId: string; amountCents: number }[];
 };
 let child: ChildProcess | undefined;
+/**
+ * Each admin call opens its own connection (`connection: close`): under heavy parallel load a reused
+ * keep-alive socket the simulator already closed fails with ECONNRESET.
+ */
 async function admin<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
   const response = await fetch(`${config.bankUrl}${path}`, {
     method,
-    headers: { authorization: `Bearer ${config.adminSecret}`, 'content-type': 'application/json' },
+    headers: {
+      authorization: `Bearer ${config.adminSecret}`,
+      'content-type': 'application/json',
+      connection: 'close',
+    },
     signal: AbortSignal.timeout(2000),
     body: body === undefined ? undefined : JSON.stringify(body),
   });
