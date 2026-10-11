@@ -28,7 +28,8 @@ export default function Home() {
   const [docs, setDocs] = useState<AnyRecord[]>([]),
     [document, setDocument] = useState<AnyRecord | null>(null),
     [query, setQuery] = useState(''),
-    [sources, setSources] = useState<AnyRecord[] | null>(null);
+    [sources, setSources] = useState<AnyRecord[] | null>(null),
+    [searchMode, setSearchMode] = useState<'semantic' | 'lexical'>('semantic');
   const [selectedCase, setSelectedCase] = useState<AnyRecord | null>(null),
     [from, setFrom] = useState(''),
     [to, setTo] = useState(''),
@@ -273,7 +274,10 @@ export default function Home() {
     setBusy(true);
     try {
       const result = await api('search', { query });
-      if (g === generation.current) setSources(result.sources);
+      if (g === generation.current) {
+        setSearchMode(result.mode === 'lexical' ? 'lexical' : 'semantic');
+        setSources(result.sources);
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -379,6 +383,7 @@ export default function Home() {
                   busy={busy}
                   query={query}
                   sources={sources}
+                  searchMode={searchMode}
                   docs={docs}
                   document={document}
                   onUpdateIndex={updateIndex}

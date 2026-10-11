@@ -5,6 +5,7 @@ export function DocumentsView({
   busy,
   query,
   sources,
+  searchMode,
   docs,
   document,
   onUpdateIndex,
@@ -17,6 +18,8 @@ export function DocumentsView({
   busy: boolean;
   query: string;
   sources: AnyRecord[] | null;
+  /** The search response `mode`: BM25 scores are not similarities. */
+  searchMode: 'semantic' | 'lexical';
   docs: AnyRecord[];
   document: AnyRecord | null;
   onUpdateIndex: () => void;
@@ -67,7 +70,9 @@ export function DocumentsView({
           </div>
           {sources.map((s) => (
             <article key={s.id}>
-              <span className="subtle-tag">Similarity {s.score.toFixed(3)}</span>
+              <span className="subtle-tag">
+                {searchMode === 'lexical' ? 'Score' : 'Similarity'} {s.score.toFixed(3)}
+              </span>
               <h3>{s.title || 'No title in the index'}</h3>
               <small>
                 {s.documentId} · Version {s.version ?? '—'}

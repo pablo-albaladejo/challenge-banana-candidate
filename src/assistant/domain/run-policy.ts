@@ -22,10 +22,14 @@ export const runOutcome = (
         status: 'incomplete',
         error: `Round limit reached after ${MAX_ROUNDS} model rounds without a final answer.`,
       };
-/** A failed run's error text: any error with a `status` is a provider failure. */
+/**
+ * A failed run's error text: a provider's own `providerMessage` (claude-cli names itself and the
+ * likely cause), else any error with a `status` is a provider failure.
+ */
 export function failureText(e: unknown) {
-  const api = e as { status?: number };
-  return api.status
+  const api = e as { status?: number; providerMessage?: unknown } | undefined;
+  if (typeof api?.providerMessage === 'string') return api.providerMessage;
+  return api?.status
     ? `The AI provider returned ${api.status}. Check permissions and quota.`
     : e instanceof Error
       ? e.message

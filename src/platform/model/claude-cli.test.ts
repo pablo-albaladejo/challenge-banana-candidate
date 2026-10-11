@@ -1,5 +1,6 @@
 import { after, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { ResponseCreateParamsNonStreaming } from 'openai/resources/responses/responses';
@@ -9,8 +10,13 @@ import {
   claudeCliArgs,
   claudeCliAvailable,
   createClaudeResponse,
+  deniedTools,
   fromClaudeResult,
+  maxStderrBytes,
+  maxStdoutBytes,
+  stdinNote,
   toClaudeRequest,
+  validClaudeModel,
 } from './claude-cli';
 import {
   claudeMessage,
@@ -51,10 +57,11 @@ describe('toClaudeRequest', () => {
       assert.ok(request.systemPrompt.includes(JSON.stringify(tool.parameters)));
     }
     assert.match(request.systemPrompt, /at most one tool/i);
+    assert.match(request.systemPrompt, /no native tools in this session/);
     assert.deepEqual(request.jsonSchema, agentTurnSchema);
   });
 
-  it('should render messages, tool calls and tool results as a readable transcript', () => {
+  it('should send messages, tool calls with their call ids and tool results as JSON items', () => {
     // Arrange
     const body = agentBody({
       input: [
@@ -79,13 +86,12 @@ describe('toClaudeRequest', () => {
     // Act
     const { prompt } = toClaudeRequest(body);
     // Assert
-    assert.ok(prompt.includes('User: Send 5 euros to Bruno'));
-    assert.ok(prompt.includes('Assistant: Checking.'));
-    assert.ok(
-      prompt.includes('Assistant called tool list_accounts (call call_1) with arguments: {}'),
-    );
-    assert.ok(prompt.includes('Tool result (call call_1): {"accounts":[]}'));
-    assert.ok(!prompt.includes('rs_1'));
+    assert.deepEqual(JSON.parse(prompt), [
+      { role: 'user', content: 'Send 5 euros to Bruno' },
+      { role: 'assistant', content: 'Checking.' },
+      { type: 'function_call', call_id: 'call_1', name: 'list_accounts', arguments: '{}' },
+      { type: 'function_call_output', call_id: 'call_1', output: '{"accounts":[]}' },
+    ]);
   });
 
   it('should pass a json_schema text format through as the output schema', () => {
@@ -103,13 +109,36 @@ describe('toClaudeRequest', () => {
     assert.deepEqual(request.jsonSchema, schema);
   });
 
-  it('should send a plain string input as the prompt with no schema when there are no tools', () => {
+  it('should send a plain string input as one user item with no schema when there are no tools', () => {
     // Arrange
     const body: ResponseCreateParamsNonStreaming = { model: 'gpt-test', input: 'Say hi' };
     // Act
     const request = toClaudeRequest(body);
     // Assert
-    assert.deepEqual(request, { mode: 'text', systemPrompt: '', prompt: 'Say hi' });
+    assert.deepEqual(request, {
+      mode: 'text',
+      systemPrompt: stdinNote,
+      prompt: '[{"role":"user","content":"Say hi"}]',
+    });
+  });
+
+  it('should tell the model in every mode that stdin is JSON data', () => {
+    // Arrange
+    const schema = { type: 'object' };
+    const bodies: ResponseCreateParamsNonStreaming[] = [
+      agentBody(),
+      { model: 'gpt-test', input: 'Hi', instructions: 'Be brief.' },
+      {
+        model: 'gpt-test',
+        input: 'Hi',
+        text: { format: { type: 'json_schema', name: 'v', schema } },
+      },
+    ];
+    // Act
+    const prompts = bodies.map((body) => toClaudeRequest(body).systemPrompt);
+    // Assert
+    for (const prompt of prompts) assert.ok(prompt.includes(stdinNote));
+    assert.match(stdinNote, /stdin as a JSON array/);
   });
 });
 
@@ -118,7 +147,7 @@ describe('claudeCliArgs', () => {
     // Arrange
     const request = toClaudeRequest(agentBody());
     // Act
-    const args = claudeCliArgs(request, 'haiku');
+    const args = claudeCliArgs(request, 'haiku', '/tmp/banana-claude-x/system-prompt.txt');
     // Assert
     const value = (flag: string) => args[args.indexOf(flag) + 1];
     assert.equal(args[0], '-p');
@@ -128,7 +157,10 @@ describe('claudeCliArgs', () => {
     assert.equal(value('--setting-sources'), '');
     assert.equal(value('--mcp-config'), '{"mcpServers":{}}');
     assert.equal(value('--settings'), '{"disableAllHooks":true}');
-    assert.equal(value('--system-prompt'), request.systemPrompt);
+    assert.equal(value('--system-prompt-file'), '/tmp/banana-claude-x/system-prompt.txt');
+    assert.ok(!args.includes('--system-prompt'));
+    assert.equal(value('--disallowedTools'), deniedTools);
+    assert.equal(deniedTools, 'Bash,Read,Write,Edit,WebFetch,WebSearch');
     assert.deepEqual(JSON.parse(value('--json-schema')), agentTurnSchema);
     for (const flag of [
       '--safe-mode',
@@ -143,7 +175,7 @@ describe('claudeCliArgs', () => {
     // Arrange
     const request = toClaudeRequest({ model: 'gpt-test', input: 'Say hi' });
     // Act
-    const args = claudeCliArgs(request, 'haiku');
+    const args = claudeCliArgs(request, 'haiku', '/tmp/prompt.txt');
     // Assert
     assert.ok(!args.includes('--json-schema'));
   });
@@ -294,28 +326,99 @@ describe('createClaudeResponse', () => {
   after(() => fake.close());
   beforeEach(() => fake.reset());
 
-  it('should send the transcript on stdin from a fresh temp dir with OMC disabled and no OpenAI key', async () => {
+  it('should send the transcript on stdin and the system prompt in a file of a removed temp dir with OMC disabled', async () => {
     // Arrange
     fake.script(claudeMessage('Hello.'));
-    const original = process.env.OPENAI_API_KEY;
-    process.env.OPENAI_API_KEY = 'sk-secret';
     // Act
-    let response;
-    try {
-      response = await createClaudeResponse(agentBody());
-    } finally {
-      process.env.OPENAI_API_KEY = original;
-    }
+    const response = await createClaudeResponse(agentBody());
     // Assert
     const [call] = fake.calls();
     assert.equal(response.output_text, 'Hello.');
-    assert.ok(call.stdin.includes('User: What do I have?'));
-    assert.ok(!call.args.some((a) => a.includes('What do I have?')));
+    assert.deepEqual(JSON.parse(call.stdin), [{ role: 'user', content: 'What do I have?' }]);
+    assert.ok(!call.args.some((a) => a.includes('What do I have?') || a.includes('Banana Bank')));
     assert.match(path.basename(call.cwd), /^banana-claude-/);
+    const promptFile = fake.flag(call, '--system-prompt-file')!;
+    assert.equal(path.basename(path.dirname(promptFile)), path.basename(call.cwd));
+    assert.equal(call.systemPrompt, toClaudeRequest(agentBody()).systemPrompt);
+    assert.equal(fs.existsSync(call.cwd), false);
     assert.equal(call.env.DISABLE_OMC, '1');
     assert.match(call.env.OMC_SKIP_HOOKS!, /keyword-detector/);
-    assert.equal(call.env.OPENAI_API_KEY, undefined);
     assert.equal(fake.flag(call, '--model'), 'haiku');
+  });
+
+  it('should pass only allowlisted variables and keep the app secrets out of the CLI', async () => {
+    // Arrange
+    fake.script(claudeText('ok'));
+    const secrets = {
+      OPENAI_API_KEY: 'sk-secret',
+      SESSION_SECRET: 'session-secret',
+      BANK_SERVICE_TOKEN: 'bank-token',
+      CLAUDECODE: '1',
+    };
+    const saved = Object.fromEntries(Object.keys(secrets).map((k) => [k, process.env[k]]));
+    Object.assign(process.env, secrets);
+    // Act
+    try {
+      await createClaudeResponse({ model: 'gpt-test', input: 'Say ok' });
+    } finally {
+      for (const [key, value] of Object.entries(saved))
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+    }
+    // Assert
+    const { envKeys } = fake.calls()[0];
+    assert.ok(envKeys.includes('PATH') && envKeys.includes('HOME'));
+    for (const key of envKeys)
+      assert.ok(
+        !/^(OPENAI_|BANK_|SESSION_SECRET$|ADMIN_|CLAUDECODE$)/.test(key),
+        `${key} reached the CLI`,
+      );
+  });
+
+  it('should decode a multi-byte character split across stdout chunks', async () => {
+    // Arrange
+    fake.script({ kind: 'split', text: 'The fee is 5 € a month.' });
+    // Act
+    const response = await createClaudeResponse({ model: 'gpt-test', input: 'Fee?' });
+    // Assert
+    assert.equal(response.output_text, 'The fee is 5 € a month.');
+  });
+
+  it('should kill a call whose stdout passes the cap and reject it as bad output', async () => {
+    // Arrange
+    fake.script({ kind: 'flood', stream: 'stdout', bytes: maxStdoutBytes + 256 * 1024 });
+    // Act & Assert
+    await assert.rejects(createClaudeResponse(agentBody()), {
+      status: 502,
+      code: 'claude_cli_bad_output',
+      message: /stdout over/,
+    });
+  });
+
+  it('should kill a call whose stderr passes the cap and reject it as bad output', async () => {
+    // Arrange
+    fake.script({ kind: 'flood', stream: 'stderr', bytes: maxStderrBytes * 2 });
+    // Act & Assert
+    await assert.rejects(createClaudeResponse(agentBody()), {
+      status: 502,
+      code: 'claude_cli_bad_output',
+      message: /stderr over/,
+    });
+  });
+
+  it('should refuse a CLAUDE_CLI_MODEL that is not a model name without running the binary', async () => {
+    // Arrange
+    process.env.CLAUDE_CLI_MODEL = '--dangerously-skip-permissions';
+    // Act & Assert
+    try {
+      await assert.rejects(createClaudeResponse(agentBody()), {
+        status: 502,
+        code: 'claude_cli_config',
+      });
+    } finally {
+      delete process.env.CLAUDE_CLI_MODEL;
+    }
+    assert.equal(fake.calls().length, 0);
   });
 
   it('should use the model named by CLAUDE_CLI_MODEL', async () => {
@@ -387,6 +490,37 @@ describe('createClaudeResponse', () => {
       assert.equal(e.code, 'claude_cli_unavailable');
       return true;
     });
+  });
+});
+
+describe('ClaudeCliError', () => {
+  it('should name the provider and the likely cause in its provider message', () => {
+    // Arrange
+    const error = new ClaudeCliError('claude-cli exited with code 1.', 'claude_cli_exit');
+    // Act
+    const text = error.providerMessage;
+    // Assert
+    assert.equal(text, 'claude-cli failed: is `claude` installed and logged in?');
+  });
+});
+
+describe('validClaudeModel', () => {
+  it('should accept model aliases and ids', () => {
+    // Arrange
+    const models = ['haiku', 'claude-haiku-4-5', 'opus[1m]', 'us.anthropic.claude:0'];
+    // Act
+    const results = models.map(validClaudeModel);
+    // Assert
+    assert.deepEqual(results, [true, true, true, true]);
+  });
+
+  it('should reject flags, blanks, spaces and shell characters', () => {
+    // Arrange
+    const models = ['-x', '--model', '', 'haiku sonnet', 'haiku;rm', '$(id)'];
+    // Act
+    const results = models.map(validClaudeModel);
+    // Assert
+    assert.ok(results.every((ok) => !ok));
   });
 });
 

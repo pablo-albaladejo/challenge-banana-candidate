@@ -5,6 +5,7 @@ import { MissingOpenAIKeyError } from './embeddings';
 import { allChunks } from './store';
 import { seedApp } from '../../server/seed';
 import { appDb } from '../../platform/db/db';
+import { setGatewayClock } from '../../platform/model/gateway';
 import { startFakeOpenAI, type FakeOpenAI } from '../../../tests/support/openai';
 import { startFakeClaude, type FakeClaude } from '../../../tests/support/claude-cli';
 import { referenceDate } from '../../platform/config';
@@ -173,6 +174,7 @@ describe('searchWithMode', () => {
     seedApp();
     fake.reset();
     claude.reset();
+    setGatewayClock();
     process.env.MODEL_PROVIDER = 'claude-cli';
     const current = allChunks().filter((c) => !c.validTo || c.validTo >= referenceDate);
     publicChunk = current.find((c) => c.audience === 'public')!;

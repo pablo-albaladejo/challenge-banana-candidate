@@ -1,6 +1,7 @@
 // A local stand-in for the `claude` binary: tests/support/fake-claude.mjs, copied into a temp dir
 // as an executable and pointed at through CLAUDE_CLI_BIN. Tests script its turns and inspect what
-// the adapter sent it (argv, stdin, cwd, env), the way tests/support/openai.ts fakes OpenAI.
+// the adapter sent it (argv, stdin, cwd, system prompt, env), the way tests/support/openai.ts fakes
+// OpenAI. The script and the call log live next to the copy, where the fake finds them itself.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,11 +11,19 @@ export type FakeClaudeTurn =
   | { kind: 'result'; result?: string; structured?: unknown; isError?: boolean }
   | { kind: 'exit'; code: number; stderr?: string }
   | { kind: 'raw'; stdout: string }
+  /** A plain-text result written in two chunks cut inside its first multi-byte character. */
+  | { kind: 'split'; text: string }
+  /** `bytes` written to one stream, then a hang that only the output cap ends. */
+  | { kind: 'flood'; stream: 'stdout' | 'stderr'; bytes: number }
   | { kind: 'hang' };
 export type FakeClaudeCall = {
   args: string[];
   stdin: string;
   cwd: string;
+  /** The content of the `--system-prompt-file` the adapter wrote. */
+  systemPrompt?: string;
+  /** Every variable name the fake inherited. */
+  envKeys: string[];
   env: Record<string, string | undefined>;
 };
 
@@ -50,14 +59,8 @@ export function startFakeClaude(): FakeClaude {
   const logPath = path.join(dir, 'calls.jsonl');
   fs.copyFileSync(source, bin);
   fs.chmodSync(bin, 0o755);
-  const saved = {
-    CLAUDE_CLI_BIN: process.env.CLAUDE_CLI_BIN,
-    FAKE_CLAUDE_SCRIPT: process.env.FAKE_CLAUDE_SCRIPT,
-    FAKE_CLAUDE_LOG: process.env.FAKE_CLAUDE_LOG,
-  };
+  const saved = process.env.CLAUDE_CLI_BIN;
   process.env.CLAUDE_CLI_BIN = bin;
-  process.env.FAKE_CLAUDE_SCRIPT = scriptPath;
-  process.env.FAKE_CLAUDE_LOG = logPath;
   const read = (): FakeClaudeTurn[] =>
     fs.existsSync(scriptPath) ? JSON.parse(fs.readFileSync(scriptPath, 'utf8')) : [];
   const reset = () => {
@@ -81,9 +84,8 @@ export function startFakeClaude(): FakeClaude {
     },
     reset,
     close: () => {
-      for (const [key, value] of Object.entries(saved))
-        if (value === undefined) delete process.env[key];
-        else process.env[key] = value;
+      if (saved === undefined) delete process.env.CLAUDE_CLI_BIN;
+      else process.env.CLAUDE_CLI_BIN = saved;
       fs.rmSync(dir, { recursive: true, force: true });
     },
   };

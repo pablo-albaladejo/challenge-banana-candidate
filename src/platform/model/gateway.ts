@@ -19,32 +19,63 @@ export function openai() {
   if (!process.env.OPENAI_API_KEY?.trim()) throw new MissingOpenAIKeyError();
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 2, timeout: 45000 });
 }
+/** After a quota fallback, `auto` skips OpenAI for this long (it would fail the same way). */
+export const quotaMemoMs = 5 * 60_000;
+let now = () => Date.now();
+let quotaExhaustedUntil = 0;
+let lastFallbackAt: string | undefined;
+let announcedAutoCli = false;
+/** Replaces the time source (tests) and forgets the quota memo, last fallback and one-time log. */
+export function setGatewayClock(clock: () => number = () => Date.now()) {
+  now = clock;
+  quotaExhaustedUntil = 0;
+  lastFallbackAt = undefined;
+  announcedAutoCli = false;
+}
+/** When the last OpenAI quota fallback happened (ISO time), if any since start-up. */
+export const lastModelFallbackAt = () => lastFallbackAt;
 /**
  * The provider a call starts with. The claude binary is only probed (once, cached) when the
- * answer depends on it: `auto` without an OpenAI key.
+ * answer depends on it: `auto` without an OpenAI key, or within `quotaMemoMs` of a quota fallback
+ * (then claude-cli answers at once). `auto` resolving to claude-cli without a key is logged once.
  */
 export async function activeProvider(): Promise<ModelProvider> {
   const env = process.env;
-  const probe = providerSetting(env) === 'auto' && !env.OPENAI_API_KEY?.trim();
-  return selectProvider(env, probe && (await claudeCliAvailable()))!;
+  const auto = providerSetting(env) === 'auto';
+  const quotaExhausted = auto && now() < quotaExhaustedUntil;
+  const probe = auto && (quotaExhausted || !env.OPENAI_API_KEY?.trim());
+  const available = probe && (await claudeCliAvailable());
+  if (quotaExhausted && available) return 'claude-cli';
+  const provider = selectProvider(env, available)!;
+  if (auto && provider === 'claude-cli' && !announcedAutoCli) {
+    announcedAutoCli = true;
+    console.info(
+      JSON.stringify({ event: 'model_provider_auto', provider, reason: 'no OPENAI_API_KEY' }),
+    );
+  }
+  return provider;
 }
 /**
  * The provider to retry a failed OpenAI call with (claude-cli on a quota error in `auto` mode when
- * the binary is available), or `undefined` to rethrow. A fallback is logged.
+ * the binary is available), or `undefined` to rethrow. A fallback is logged (an embeddings call
+ * falls back to lexical search) and remembered for `quotaMemoMs`.
  */
-export async function fallbackProvider(error: unknown, operation: string) {
+export async function fallbackProvider(error: unknown, operation: 'responses' | 'embeddings') {
   const available = isQuotaError(error) && (await claudeCliAvailable());
   const provider = selectProvider(process.env, available, error);
-  if (provider)
+  if (provider) {
+    quotaExhaustedUntil = now() + quotaMemoMs;
+    lastFallbackAt = new Date(now()).toISOString();
     console.warn(
       JSON.stringify({
         event: 'model_provider_fallback',
         operation,
         from: 'openai',
-        to: provider,
+        to: operation === 'embeddings' ? 'lexical' : provider,
         code: (error as { code?: string }).code,
       }),
     );
+  }
   return provider;
 }
 export async function createResponse(body: ResponseCreateParamsNonStreaming) {

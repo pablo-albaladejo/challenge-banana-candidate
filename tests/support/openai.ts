@@ -4,8 +4,13 @@ import http from 'node:http';
 import { createHash } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 type OutputItem = Record<string, unknown>;
-/** A model turn, or an API error (with an optional OpenAI `code`, e.g. `insufficient_quota`). */
-export type ScriptedTurn = OutputItem[] | { status: number; error: string; code?: string };
+/**
+ * A model turn, or an API error (with an optional OpenAI `code`, e.g. `insufficient_quota`). A
+ * coded error carries `x-should-retry: false` unless `retryable`, which leaves the SDK's own retry
+ * policy (2 retries with backoff for a 429) to decide, as against the real API.
+ */
+export type ScriptedTurn =
+  OutputItem[] | { status: number; error: string; code?: string; retryable?: boolean };
 export type RecordedRequest = { path: string; body: any };
 let counter = 0;
 const id = (prefix: string) => `${prefix}_${++counter}`;
@@ -108,13 +113,13 @@ export async function startFakeOpenAI(options: FakeOpenAIOptions = {}): Promise<
     if (path.endsWith('/responses')) {
       const turn = turns.shift() ?? options.policy?.(body);
       if (!turn) return send(500, { error: { message: 'No scripted model turn left.' } });
-      // A coded error (quota) is final, as at OpenAI: `x-should-retry` stops the SDK retrying it.
+      // A coded error (quota) is final unless `retryable`: `x-should-retry` stops the SDK retrying.
       if (!Array.isArray(turn))
         return turn.code
           ? send(
               turn.status,
               { error: { message: turn.error, code: turn.code } },
-              { 'x-should-retry': 'false' },
+              turn.retryable ? {} : { 'x-should-retry': 'false' },
             )
           : send(turn.status, { error: { message: turn.error } });
       return send(200, {

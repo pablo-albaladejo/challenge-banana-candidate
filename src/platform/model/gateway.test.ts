@@ -6,8 +6,12 @@ import {
   activeProvider,
   createEmbeddings,
   createResponse,
+  fallbackProvider,
+  lastModelFallbackAt,
   MissingOpenAIKeyError,
   openai,
+  quotaMemoMs,
+  setGatewayClock,
 } from './gateway';
 import { reply, startFakeOpenAI, type FakeOpenAI } from '../../../tests/support/openai';
 import { claudeText, startFakeClaude, type FakeClaude } from '../../../tests/support/claude-cli';
@@ -128,6 +132,7 @@ describe('createResponse provider selection', () => {
   beforeEach(() => {
     fake.reset();
     claude.reset();
+    setGatewayClock();
   });
 
   it('should reject a cleared key with MissingOpenAIKeyError under forced openai even when claude is available', async () => {
@@ -140,8 +145,9 @@ describe('createResponse provider selection', () => {
     assert.equal(claude.calls().length, 0);
   });
 
-  it('should answer through claude-cli in auto mode when no key is configured', async () => {
+  it('should answer through claude-cli in auto mode when no key is configured', async (t) => {
     // Arrange
+    t.mock.method(console, 'info', () => {});
     claude.script(claudeText('Hello from Claude.'));
     const vars = { MODEL_PROVIDER: 'auto', OPENAI_API_KEY: '' };
     // Act
@@ -182,6 +188,56 @@ describe('createResponse provider selection', () => {
     });
   });
 
+  it('should fall back after the SDK has retried a quota failure that does not forbid retries', async (t) => {
+    // Arrange
+    t.mock.method(console, 'warn', () => {});
+    const retryable = { ...quota, retryable: true };
+    fake.script(retryable, retryable, retryable);
+    claude.script(claudeText('Answered by Claude.'));
+    // Act
+    const response = await withEnv({ MODEL_PROVIDER: 'auto' }, () =>
+      createResponse({ model: 'm', input: 'Hi' }),
+    );
+    // Assert
+    assert.equal(response.output_text, 'Answered by Claude.');
+    assert.equal(fake.requests.length, 3);
+  });
+
+  it('should go straight to claude-cli for five minutes after a quota fallback', async (t) => {
+    // Arrange
+    t.mock.method(console, 'warn', () => {});
+    let clock = Date.parse('2026-09-24T10:00:00Z');
+    setGatewayClock(() => clock);
+    fake.script(quota, reply('OpenAI is back.'));
+    claude.script(claudeText('First.'), claudeText('Second.'));
+    const ask = () =>
+      withEnv({ MODEL_PROVIDER: 'auto' }, () => createResponse({ model: 'm', input: 'Hi' }));
+    // Act
+    await ask();
+    clock += quotaMemoMs - 1;
+    const remembered = await ask();
+    clock += 2;
+    const expired = await ask();
+    // Assert
+    assert.equal(remembered.output_text, 'Second.');
+    assert.equal(expired.output_text, 'OpenAI is back.');
+    assert.equal(fake.requests.length, 2);
+    assert.equal(lastModelFallbackAt(), '2026-09-24T10:00:00.000Z');
+  });
+
+  it('should log an embeddings quota fallback as a fallback to lexical search', async (t) => {
+    // Arrange
+    const warn = t.mock.method(console, 'warn', () => {});
+    const error = Object.assign(new Error('quota'), { status: 429, code: 'insufficient_quota' });
+    // Act
+    const provider = await withEnv({ MODEL_PROVIDER: 'auto' }, () =>
+      fallbackProvider(error, 'embeddings'),
+    );
+    // Assert
+    assert.equal(provider, 'claude-cli');
+    assert.equal(JSON.parse(warn.mock.calls[0].arguments[0] as string).to, 'lexical');
+  });
+
   it('should rethrow a quota failure under forced openai', async () => {
     // Arrange
     fake.script(quota);
@@ -204,6 +260,32 @@ describe('createResponse provider selection', () => {
 });
 
 describe('activeProvider', () => {
+  let claude: FakeClaude;
+  before(() => {
+    claude = startFakeClaude();
+  });
+  after(() => claude.close());
+  beforeEach(() => setGatewayClock());
+
+  it('should log once that auto mode resolved to claude-cli', async (t) => {
+    // Arrange
+    const info = t.mock.method(console, 'info', () => {});
+    const vars = { MODEL_PROVIDER: 'auto', OPENAI_API_KEY: '' };
+    // Act
+    const providers = await withEnv(vars, async () => [
+      await activeProvider(),
+      await activeProvider(),
+    ]);
+    // Assert
+    assert.deepEqual(providers, ['claude-cli', 'claude-cli']);
+    assert.equal(info.mock.callCount(), 1);
+    assert.deepEqual(JSON.parse(info.mock.calls[0].arguments[0] as string), {
+      event: 'model_provider_auto',
+      provider: 'claude-cli',
+      reason: 'no OPENAI_API_KEY',
+    });
+  });
+
   it('should resolve forced claude-cli without probing for a key', async () => {
     // Arrange
     const vars = { MODEL_PROVIDER: 'claude-cli', OPENAI_API_KEY: 'sk-test' };

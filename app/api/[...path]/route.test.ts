@@ -173,6 +173,14 @@ describe('GET /api/health', () => {
     assert.equal(result.body.searchMode, 'semantic');
   });
 
+  it('should report that no model fallback has happened yet', async () => {
+    // Arrange
+    // Act
+    const result = await api('GET', 'health');
+    // Assert
+    assert.equal(result.body.lastFallbackAt, null);
+  });
+
   it('should report lexical search when the claude-cli provider is forced', async () => {
     // Arrange
     process.env.MODEL_PROVIDER = 'claude-cli';

@@ -472,9 +472,17 @@ describe('sendMessage through the claude-cli provider', () => {
       ],
     );
     const [first, second] = claude.calls();
-    assert.ok(first.stdin.includes('User: Which accounts do I have?'));
-    assert.match(second.stdin, /Assistant called tool list_accounts \(call call_cli_[\w-]+\)/);
-    assert.match(second.stdin, /Tool result \(call call_cli_[\w-]+\): .*acc-lucia-savings/);
+    assert.deepEqual(JSON.parse(first.stdin).at(-1), {
+      role: 'user',
+      content: 'Which accounts do I have?',
+    });
+    const [call, output] = JSON.parse(second.stdin).slice(-2);
+    assert.equal(call.type, 'function_call');
+    assert.equal(call.name, 'list_accounts');
+    assert.match(call.call_id, /^call_cli_/);
+    assert.equal(output.type, 'function_call_output');
+    assert.equal(output.call_id, call.call_id);
+    assert.match(output.output, /acc-lucia-savings/);
   });
 
   it('should ground the turn in lexically retrieved documents', async () => {
@@ -488,10 +496,10 @@ describe('sendMessage through the claude-cli provider', () => {
     });
     // Assert
     const [call] = claude.calls();
-    assert.match(claude.flag(call, '--system-prompt')!, /Aurora/);
+    assert.match(call.systemPrompt!, /Aurora/);
   });
 
-  it('should fail the run with a provider error when the CLI fails', async () => {
+  it('should fail the run with a claude-cli error that names the likely cause when the CLI fails', async () => {
     // Arrange
     claude.script({ kind: 'exit', code: 1, stderr: 'Invalid API key' });
     // Act & Assert
@@ -500,12 +508,17 @@ describe('sendMessage through the claude-cli provider', () => {
       (e) => {
         assert.ok(e instanceof DomainError);
         assert.equal(httpStatusOf(e), 502);
-        assert.match(e.message, /AI provider returned 502/);
+        assert.equal(e.message, 'claude-cli failed: is `claude` installed and logged in?');
         return true;
       },
     );
-    const run = runOf(latestRun().id);
+    const { id } = latestRun();
+    const run = runOf(id);
     assert.equal(run.status, 'failed');
-    assert.equal(run.error, 'The AI provider returned 502. Check permissions and quota.');
+    assert.equal(run.error, 'claude-cli failed: is `claude` installed and logged in?');
+    assert.equal(
+      messagesOf(id).at(-1)?.content,
+      'I could not complete the request: claude-cli failed: is `claude` installed and logged in?',
+    );
   });
 });

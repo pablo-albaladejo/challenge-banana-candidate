@@ -99,6 +99,18 @@ describe('failureText', () => {
     assert.equal(text, 'The AI provider returned 429. Check permissions and quota.');
   });
 
+  it("should use the provider's own message when it gives one", () => {
+    // Arrange
+    const error = Object.assign(new Error('claude-cli exited with code 1.'), {
+      status: 502,
+      providerMessage: 'claude-cli failed: is `claude` installed and logged in?',
+    });
+    // Act
+    const text = failureText(error);
+    // Assert
+    assert.equal(text, 'claude-cli failed: is `claude` installed and logged in?');
+  });
+
   it('should use the error message otherwise', () => {
     // Arrange
     const error = new Error(faker.lorem.sentence());
