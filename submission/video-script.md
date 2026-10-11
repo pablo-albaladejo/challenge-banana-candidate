@@ -1,149 +1,143 @@
-# Demo video script
+# Guion del vídeo de demostración
 
-Draft written 2026-10-11. Target length **7 to 8 minutes** (the brief recommends 5 to 10; camera optional). Output file: `submission/demo.mp4`. The click paths come from the e2e journeys in [`../app/page.e2e.ts`](../app/page.e2e.ts); scenes marked **IN PROGRESS** depend on Part 2 commits 4 to 7, which are not on `main` at `f13e833`. Re-check every step against the final build before recording. Figures quoted from a document rather than observed are marked.
+Duración objetivo **~8:35** (el brief pide 5–10 min). Locución en español. Fichero final: `submission/demo.mp4`.
 
-## Before recording
+Cada fila es **tiempo · pantalla · locución**. La columna _Pantalla_ dice exactamente qué abrir y dónde hacer clic; se puede seguir sin conocer el proyecto. Solo se muestra el estado final: GitHub (commits, diffs, documentos renderizados) y la app ejecutándose sobre el código final.
 
-```sh
-npm run reset       # services stopped
-npm run ingest
-npm run dev         # app http://127.0.0.1:3000, bank :4001
-```
+Abreviaturas de pantalla:
 
-- Use `MODEL_PROVIDER=auto` or `openai` (see [`README.md`](README.md)). Chat turns can take tens of seconds; cut or speed those in editing, and say so on screen.
-- Reference date for the exercise is 24 September 2026.
-- Persona selector: the "Switch person" dropdown. Names used: `Lucía Martín`, `Diego Salas`, `Bruno Vidal`, `Marta Sanz · Operator`.
-- Close other windows; no `.env.local` or key on screen.
+- **[G]** navegador en GitHub. Base de todas las URLs: `https://github.com/pablo-albaladejo/challenge-banana-candidate`, abreviada como `{R}`.
+- **[A]** navegador en la app: `http://127.0.0.1:3000`.
+- **[T]** terminal en la carpeta del proyecto.
 
-## Scene map
+## 0. Antes de grabar
 
-| #   | Scene                          | Time      | Status      |
-| --- | ------------------------------ | --------- | ----------- |
-| 1   | The problem                    | 0:00-0:45 | Ready       |
-| 2   | Part 1 readiness highlights    | 0:45-3:15 | Ready       |
-| 3   | Part 2 piece B: pre-flight     | 3:15-4:45 | Ready       |
-| 4   | Part 2 piece A: verified brief | 4:45-6:30 | IN PROGRESS |
-| 5   | Architecture in one slide      | 6:30-7:15 | Ready       |
-| 6   | How quality was enforced       | 7:15-8:00 | Ready       |
+### Requisitos en `main`
 
-## Scene 1 - The problem (0:45)
+Todo debe estar integrado y empujado antes de grabar: P0-5/P0-6, los commits 4, 5 y 6 de la Parte 2, y este directorio `submission/` con `part1-evidence.md`. Comprueba en `{R}/commits/main` que aparecen los títulos citados abajo.
 
-**On screen:** the app on Lucía's overview ("Hello, Lucía.", Aurora account, Personal savings).
+### Preparar el entorno (una vez)
 
-**Say:**
-
-- Banana Bank launches an AI assistant on Monday. Customers consult information and make simulated transfers; operators handle cases.
-- Passing the starter's tests did not mean it was safe. Three risks mattered most: money moving without a confirmation, a lost bank response treated as a failure, and answers not grounded in the documents.
-- Part 2 builds on one rule: the agent never states a fact it cannot prove. Facts come from code that checks the bank, not from the model.
-
-## Scene 2 - Part 1 readiness highlights (2:30)
-
-Pick two or three; depth beats breadth. Suggested order, each tied to a commit in [`README.md`](README.md).
-
-### 2a. Confirmation before money moves (`409a1f3`)
-
-1. Select `Lucía Martín`. Open **Transfers** in the navigation.
-2. Recipient `acc-bruno` (Bruno's account in the list), amount `12.34`, concept anything, press **Send transfer**.
-3. A status says "Review the proposal". Show the proposal card: no money has moved yet.
-4. Press **Confirm these details**. Status: "Transfer confirmed and completed".
-
-**Say:** the model can only create a proposal; execution is a separate server route that the model cannot call. (Journey: "Transfers", `app/page.e2e.ts`.)
-
-### 2b. Lost response treated as unknown, then reconciled (`99659a1`, `149bd39`)
-
-1. In a terminal: `npm run scenario -- lost-response`.
-2. As Lucía, make and confirm a transfer. The bank commits it and the response is lost.
-3. Show that the outcome is reported as unknown, not as a failed transfer, and that nothing is sent twice.
-4. Restore: `npm run scenario -- normal`.
-
-**TODO (Pablo):** run this once on the final build and note the exact on-screen wording; the exact UI text for `unknown` was not verified in this draft. For a before/after, show the same steps on starter commit `726b592`.
-
-### 2c. Grounded, cited answers (`1ad39d8`, `345799d`)
-
-1. As Lucía, open **Assistant** and ask: `When is the Aurora account fee waived?`
-2. Show the `[documentId vversion]` citations and that only the version valid on 24 September 2026 is used.
-3. Optionally open **Documents** and show "68 sources" for a customer versus "80 sources" for operator Marta (journeys "Document library").
-
-### 2d. Operator evidence (`bc3cc62`)
-
-1. Select `Marta Sanz · Operator`. Heading "Every case, a person."; 17 cases, 9 open.
-2. Open a case: conversation, activity, intents and bank operations are listed; missing evidence is named under gaps.
-
-**Say:** the findings still open, including the unauthenticated persona selector, are documented in `production-readiness.md`. The selector is accepted for the demo and is a launch blocker.
-
-## Scene 3 - Part 2 piece B: pre-flight checks on the approval card (1:30)
-
-Backed by e2e journey B, "Pre-flight checks" (`72409f1`, `df4cc7a`, `8b5769e`).
-
-1. Select `Lucía Martín`, **Transfers**.
-2. Recipient Bruno, amount `200`, concept "Big dinner", press **Send transfer**.
-3. On the approval card show, in order:
-   - "will have EUR <balance after>": the design document cites EUR 3,807.50 for the seeded data (**unverified here**; read the figure off the screen).
-   - The unusual-amount line: "larger than any payment from your accounts".
-   - There is no "has no record of a completed transfer" line for Bruno, because the historic EUR 85 payment is reconciled with the bank first.
-   - The caption on each check says where it came from (as-of time, sample size or safeguard).
-4. **Confirm these details** stays enabled.
-5. Switch to `Diego Salas` (small balance). **Transfers**, recipient Lucía, an amount above his balance, **Send transfer**.
-6. Show "so the bank is likely to decline it" and "Blocker:". The button now reads **Confirm these details anyway** and is still enabled.
-
-**Say:**
-
-- Checks are computed in code from the bank and the customer's history, stored with the approval, and relayed verbatim by the model. The model does not compute them.
-- The blocker does not disable confirmation: the bank is the authority on funds, and duplicating its decision risks disagreeing with it (user decision, `part2-design.md` section 10).
-- Optional: ask the assistant in chat `Send EUR 200 to Bruno for the trip`; the same checks appear and the model repeats them.
-
-## Scene 4 - Part 2 piece A: the operator's verified case brief (1:45) - IN PROGRESS
-
-**TODO:** none of this is built at `f13e833`. Re-write the steps from the final UI. The intended flow is design section 8 (`part2-design.md`); the values below come from that document and must be re-observed.
-
-Intended steps:
-
-1. Select `Marta Sanz · Operator`, open `case-lucia`, press **Generate brief** (**TODO** confirm the control name).
-2. Show the timeline and the claim verdicts: the assistant told Lucía "You can try again", but the bank shows a completed EUR 85.00 operation to Bruno Vidal. The brief marks that claim false and raises a "Retry advice on a completed payment" finding with cited procedures. Following the advice would have paid Bruno twice.
-3. Show an honest "unverifiable" verdict (the design names `case-diego` and `case-carla`).
-4. Edit the draft reply, type an unverified amount, press **Send and close**; the send-time recheck flags it and the operator must acknowledge.
-5. Switch to `Lucía Martín`: the conversation shows the support message from Marta.
-6. Degraded mode: blank the model key, regenerate; the deterministic brief still appears.
-
-**If not finished by recording time:** replace this scene with a 20-second slide stating the design and status, and say plainly that it is unfinished. Do not show mock-ups as working software.
-
-## Scene 5 - Architecture in one slide (45 s)
-
-**Slide content:** seven verticals as boxes ranked by dependency, with the layers of one vertical beside them.
-
-- Verticals and ranks: `identity`, `knowledge`, `conversations` (0); `transfers` (1); `support` (2); `accounts` (3); `assistant` (4). A vertical imports only lower ranks, only through its `index.ts`.
-- Inside a vertical: `entry-points` (HTTP, tools, wiring), `application` (use cases, ports), `domain` (pure rules), `infrastructure` (SQLite, bank, model adapters).
-- Outside: `src/platform` (config, DB, bank client, model gateway), `src/server` (route table), `simulator/` untouched.
-- Rule enforced by ESLint and an import-graph test (`1e6c507`), not by convention.
-
-**Say:** the bank is a black box reached through ports, so the app works against any implementation of the same contract. Source: [`architecture-decoupling.md`](architecture-decoupling.md), [`../src/AGENTS.md`](../src/AGENTS.md).
-
-## Scene 6 - How quality was enforced (45 s)
-
-**On screen:** a terminal and the commit log, then `TESTING.md` rules.
-
-Show, with a real run (**TODO** record the counts from the final build, do not quote these from the draft):
+En **[T]**, con los servicios parados:
 
 ```sh
-npm test
-npm run test:e2e
-npm run lint
+npm run reset        # borra la actividad local (guarda antes lo que necesites)
+npm run ingest       # reconstruye el índice de documentos
 ```
 
-**Say:**
+En `.env.local`, deja `MODEL_PROVIDER=auto`, para que el chat y el brief usen Claude (Haiku) vía `claude -p` si no hay crédito de OpenAI.
 
-- Failing test first, then the fix; no `skip`, `only` or `todo`.
-- Characterisation tests before every refactor, green on the old code first.
-- Safety claims proved by mutation: break the code, watch a test go red (for example `be80fc4` lists 13 mutations).
-- Tests never touch OpenAI or the real Claude; they use a scripted fake and the real bank over HTTP.
-- Husky hooks gate every commit and push; `--no-verify` is not used.
-- AI use: executor, independent review, fixes, human approval before each push. Details in [`ai-sessions.md`](ai-sessions.md); the original sessions are in `ai-sessions/`.
+### Ventanas abiertas
 
-**Close (10 s):** state what is finished, what is pending (Part 2 piece A, listed in `README.md`) and where to find the evidence.
+1. **Terminal 1**: aquí correrá `npm run dev`.
+2. **Terminal 2**: para `npm run scenario` y los tests.
+3. **Navegador, pestaña 1**: `{R}/commits/main`.
+4. **Navegador, pestaña 2**: `http://127.0.0.1:3000`.
 
-## After recording
+### Orden de grabación (distinto del orden del montaje)
 
-- [ ] Save as `submission/demo.mp4`; optional `submission/transcript.vtt`.
-- [ ] Confirm no secrets or `.env.local` content is visible.
-- [ ] Update the status table in `README.md`.
-- [ ] Re-run `npm run reset` and `npm run ingest` if the demo changed local data.
+Algunas acciones no se pueden repetir: `lost-response` solo afecta a la primera operación, y "Send and close" cierra el caso. Graba en este orden y monta según los tiempos:
+
+1. **Clip D (modo degradado del brief, bloque 6, 7:25).**
+   - En la Terminal 1: `MODEL_PROVIDER=openai OPENAI_API_KEY= npm run dev`.
+   - Graba el clip D.
+   - Para el servidor con `Ctrl+C`.
+2. **Arranque normal.** En la Terminal 1: `npm run dev`. Espera a ver `Ready` y `http://127.0.0.1:3000`.
+3. **Ejecuciones de tests (bloque 4).** En la Terminal 2, ejecuta `npm test` y graba solo el final de la salida.
+   - `npm run test:e2e` usa otros puertos (3100/4101/4102) y puede correr con el dev arrancado. Graba también solo su final.
+4. **Bloques 3, 5 y 6** de la app, en ese orden.
+5. **Bloques 0, 1, 2, 7 y 8** de GitHub, en cualquier momento.
+
+Antes del bloque 3 no hagas ninguna transferencia, para que `lost-response` caiga en la del bloque 3.
+
+### Cambiar de persona en la app
+
+Arriba a la derecha está la etiqueta **VIEW AS**, con un desplegable al lado (`Switch person`):
+
+- haz clic en el desplegable y elige **Lucía Martín** (grupo _Customers_);
+- o elige **Marta Sanz · Operator** (grupo _Operators_).
+
+La barra lateral izquierda cambia según la persona:
+
+- **cliente:** _Overview_, _Assistant_, _Transfers_, _Documents_ y la lista _CONVERSATIONS_;
+- **operador:** _Cases_, _Documents_.
+
+---
+
+## Bloque 0 · Gancho (0:00 – 0:30)
+
+| Tiempo      | Pantalla                                                                                                                                                             | Locución                                                                                                                                                                                                   |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0:00 – 0:10 | **[G]** Abre `{R}/blob/main/submission/part1-evidence.md#2b-response-lost-on-every-attempt-ad-hoc-proxy`. Se ve la tabla **2b** con las columnas _Starter_ y _Main_. | "Banana Bank lanza su asistente el lunes. Antes de tocar nada, medí qué pasaba si el banco pierde una respuesta."                                                                                          |
+| 0:10 – 0:20 | **[G]** Misma tabla. Señala con el ratón la celda _Starter_ de la fila _Result_: `"failed"` y "two references both committed".                                       | "En el código de partida, Lucía manda dinero a Bruno, el asistente le dice que ha fallado… y el banco le ha cobrado dos veces."                                                                            |
+| 0:20 – 0:30 | **[G]** Misma tabla. Señala la celda _Main_ de las filas _Result_ y _Retry_: `unknown` → `completed`, "Operations stay 5".                                           | "Hoy, la misma situación queda como 'pendiente de verificar', se reconcilia con el banco y se cobra una vez. Todo sale de una regla: el agente nunca afirma un hecho que no pueda probar contra el banco." |
+
+## Bloque 1 · Cómo lo abordé (0:30 – 1:20)
+
+| Tiempo      | Pantalla                                                                                                                                                                                                                                                                                                       | Locución                                                                                                                                                                                |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0:30 – 0:45 | **[G]** Abre `{R}/commits/main` y baja con la rueda hasta el final de la lista (pulsa _Older_ si hay paginación). Se ven los primeros commits: `docs: add hierarchical AGENTS.md…` (c5a655b), `test: add integration and Playwright E2E coverage…` (dbb43f6) y `chore: add ESLint and Husky hooks…` (d21efb3). | "Lo primero no fue arreglar nada, sino montar una red de seguridad: documentar el código, añadir tests de integración y end-to-end, y hooks de git que impiden subir algo que no pase." |
+| 0:45 – 1:00 | **[G]** En la misma lista, sube despacio por el bloque de `fix(banking): …` y `fix(agent): …`, de c58fe72 a 81d766a.                                                                                                                                                                                           | "Después, un commit por problema. Cada uno empieza con un test que falla, demostrando el bug, y luego el arreglo."                                                                      |
+| 1:00 – 1:10 | **[G]** Abre `{R}/commit/409a1f3`. Baja hasta el diff de un fichero `*.test.ts` y señala las líneas verdes de un `it('should …')`.                                                                                                                                                                             | "Por ejemplo, este: el asistente ejecutaba transferencias sin pedir confirmación. Aquí está el test que lo fija."                                                                       |
+| 1:10 – 1:20 | **[G]** Vuelve a `{R}/commits/main` y sube por los `refactor(…)`, luego `feat(transfers)` y luego `feat(evals)`.                                                                                                                                                                                               | "El mismo ciclo sirvió para separar la arquitectura por dominios y para construir la Parte 2 encima."                                                                                   |
+
+## Bloque 2 · Qué encontré (1:20 – 2:20)
+
+| Tiempo      | Pantalla                                                                                                                                                                                            | Locución                                                                                                                                                                                                                                                                                                                                                       |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1:20 – 1:35 | **[G]** Abre `{R}/blob/main/submission/production-readiness.md`. Se ven el título _Production readiness review_ y el párrafo de las dos revisiones.                                                 | "Después de la red de seguridad, hice dos revisiones independientes: una de arquitectura y otra de seguridad, con el OWASP Top 10 y los riesgos propios de un LLM. Las fusioné en un documento con prioridades: P0 bloquea el lanzamiento, P1 debería ir y P2 puede esperar."                                                                                  |
+| 1:35 – 1:50 | **[G]** Abre `{R}/blob/main/submission/production-readiness.md#what-was-checked-and-is-correct`. Señala las viñetas **The model cannot move money** y **One bank reference per intent**.            | "También dejé por escrito lo que ya estaba bien, para no tocarlo: el modelo no puede mover dinero, solo proponer, y cada intento lleva una única referencia en el banco."                                                                                                                                                                                      |
+| 1:50 – 2:10 | **[G]** Abre `{R}/blob/main/submission/production-readiness.md#root-cause-shared-by-most-money-path-findings`. Señala la línea del ciclo `created → requires_confirmation → … → unknown \| failed`. | "El hallazgo importante es esta causa raíz. El ciclo de vida de una transferencia solo avanza dentro de la petición que la creó. Si el banco pierde la respuesta, nadie vuelve a mirarla. Y si el cliente reintenta, se crea un intento nuevo con otra referencia: justo el doble cobro del principio. P0-1 a P0-4 no son cuatro bugs, son un único problema." |
+| 2:10 – 2:20 | **[G]** Abre `{R}/commit/149bd39`. Se ve el título `fix(banking): settle every ambiguous transfer with the bank and hold duplicates`. Baja un poco por el diff.                                     | "Así que los arreglé en bloque: todo lo ambiguo acaba en _unknown_ y todo _unknown_ se reconcilia con el banco. Lo de seguridad, como el selector de personas o el DNS rebinding, va cada uno en su commit, con su test."                                                                                                                                      |
+
+## Bloque 3 · Demo de la Parte 1 en la app final (2:20 – 4:05)
+
+Prerrequisito: el servidor está arrancado con `npm run dev` y todavía no se ha hecho ninguna transferencia.
+
+| Tiempo      | Pantalla                                                                                                                                                                                                                                                                                                                                                                           | Locución                                                                                                                                                                                                                                                                    |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2:20 – 2:35 | **[A]** Ve a `http://127.0.0.1:3000`. En **VIEW AS** (arriba a la derecha) elige **Lucía Martín**. Aparece _Hello, Lucía._ con sus cuentas y saldos. Señala el saldo de la primera cuenta.                                                                                                                                                                                         | "Esto es la app tal como queda. Soy Lucía, y este es mi saldo. Vamos a reproducir la situación del principio."                                                                                                                                                              |
+| 2:35 – 2:45 | **[T]** En la Terminal 2: `npm run scenario -- lost-response` y Enter. Se ve la confirmación del perfil.                                                                                                                                                                                                                                                                           | "Le digo al simulador del banco que pierda la respuesta de la próxima transferencia, después de ejecutarla."                                                                                                                                                                |
+| 2:45 – 3:10 | **[A]** En la barra izquierda, clic en **Transfers**.<br>• _From account_: deja la primera cuenta.<br>• _Recipient_: elige **Bruno Vidal**.<br>• _Amount in euros_: `12.34`.<br>• _Description_: `Cena`.<br>• Clic en **Send transfer**.<br>Abajo aparece el panel **Proposals awaiting confirmation**. Señala los nombres, el IBAN enmascarado, "another person" y "Valid until". | "Lo primero que cambió: ni el formulario ni el asistente ejecutan, proponen. La tarjeta dice a quién va con su nombre y no con un id interno, así que una transferencia inyectada se nota. Y caduca a los diez minutos."                                                    |
+| 3:10 – 3:35 | **[A]** En la tarjeta, clic en **Confirm these details**. Arriba aparece _Transfer confirmed and completed_. Clic en **Overview** (barra izquierda): el saldo ha bajado **una vez** 12,34 €, y en _Recent activity_ hay una sola línea nueva.                                                                                                                                      | "Confirmo. El banco ejecuta y pierde la respuesta. Antes, el reintento usaba una referencia nueva y cobraba dos veces. Ahora reutiliza la misma, el banco contesta que ya la tenía, y el saldo baja una sola vez."                                                          |
+| 3:35 – 4:05 | **[G]** Abre `{R}/blob/main/submission/part1-evidence.md#2-lost-bank-response-99659a1-149bd39-c58fe72-77ff01b`. Baja por la tabla **2a** y luego por la **2b**.                                                                                                                                                                                                                    | "Y si el banco pierde todas las respuestas, el asistente ya no dice 'ha fallado'. Dice 'pendiente de verificar', y el dashboard lo reconcilia contra el banco hasta dejarlo en _completed_. Antes era _failed_ con dos cargos. Ahora es un solo cargo y un estado honesto." |
+
+## Bloque 4 · Verificación y lo que queda abierto (4:05 – 4:35)
+
+| Tiempo      | Pantalla                                                                                                                                                                                                 | Locución                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 4:05 – 4:15 | **[T]** Clip grabado antes: el final de `npm test` (`# pass N`, `# fail 0`) y el final de `npm run test:e2e` (`N passed`).                                                                               | "Cada cambio pasa por los mismos gates: lint, tipos, más de mil tests y los recorridos end-to-end con Playwright. Los hooks de git no dejan saltárselos. Y a cada test nuevo le rompo el código a propósito, para comprobar que de verdad se pone en rojo."                                                                                                                                                                                |
+| 4:15 – 4:35 | **[G]** Abre `{R}/blob/main/submission/production-readiness.md#p0-7-anyone-who-can-reach-the-port-can-become-any-person-operators-included` y señala su línea _Status_. Después baja a `#p1-should-fix`. | "Lo que no voy a vender: esto no está listo para clientes reales sin autenticación de verdad. El selector de personas ya no existe en producción, pero falta un login real con sesiones que caduquen. Faltan también límites de coste y observabilidad para quien esté de guardia. Y un detalle honesto: todo lo probé con un modelo sustituto, porque la cuenta de OpenAI no tenía crédito. El modelo de producción no se ha ejercitado." |
+
+## Bloque 5 · Parte 2: la idea y los pre-flight checks (4:35 – 5:35)
+
+| Tiempo      | Pantalla                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Locución                                                                                                                                                                                                                                                                                                                           |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 4:35 – 4:55 | **[G]** Abre `{R}/blob/main/submission/part2-design.md#1-problem-and-value`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | "Para la Parte 2 llevé la misma regla más lejos: el agente nunca afirma un hecho que no pueda comprobar contra el banco. Lo apliqué a los dos momentos en que un error cuesta dinero o confianza: cuando el cliente va a pagar y cuando un operador responde a una queja."                                                         |
+| 4:55 – 5:20 | **[A]** Como Lucía, clic en **Assistant** (barra izquierda, con la etiqueta _AI_) y luego en **+** junto a _CONVERSATIONS_ para abrir una conversación nueva. En la caja _What can we help with?_ escribe `Send 200 EUR to Bruno Vidal for rent` y pulsa el botón de enviar (_Send message_, a la derecha de la caja). Espera la respuesta del asistente (recorta la espera en el montaje). Debajo aparece **Proposals awaiting confirmation** con el recuadro **Pre-flight checks**. Señala ⚠ "…will have EUR …" y "larger than any payment from your accounts", y la letra pequeña "based on N recent payments". **No confirmes.** | "Ahora se lo pido al asistente. Él solo propone, y la tarjeta añade comprobaciones calculadas por código, no por el modelo: con cuánto saldo te quedas y si el importe es mayor que cualquier pago que hayas hecho. Cada una dice de dónde sale el dato. El modelo también las recibe, para explicarlas, pero no puede quitarlas." |
+| 5:20 – 5:35 | **[A]** En la misma conversación escribe `Actually, send 5000 EUR to Bruno Vidal for rent` y pulsa enviar. En la nueva tarjeta, señala ⛔ "…so the bank is likely to decline it" y el botón **Confirm these details anyway**. **No confirmes.** Plan B si el modelo falla o tarda: **Transfers**, _Recipient_ **Bruno Vidal**, _Amount in euros_ `200` (y luego `5000`), _Description_ `Rent`, **Send transfer**: aparece la misma tarjeta.                                                                                                                                                                                          | "Si el banco lo va a rechazar, se ve como bloqueo, pero la decisión sigue siendo del cliente. Ni el asistente ni nadie puede suavizar este aviso."                                                                                                                                                                                 |
+
+## Bloque 6 · Parte 2: el brief verificado para el operador (5:35 – 7:35)
+
+| Tiempo      | Pantalla                                                                                                                                                                                                                                                                                                                                                                                                     | Locución                                                                                                                                                                                                                                                                                                                                                                                     |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 5:35 – 5:55 | **[A]** En **VIEW AS** elige **Marta Sanz · Operator**. Aparece _Every case, a person._ con la bandeja _Inbox_. Clic en el caso _"Could someone check the dinner payment with Bruno when available?"_.                                                                                                                                                                                                       | "Ahora soy Marta, de soporte. Lucía pregunta por el pago de la cena con Bruno. El asistente le dijo que no se pudo completar."                                                                                                                                                                                                                                                               |
+| 5:55 – 6:30 | **[A]** En el panel **Verified brief**, clic en **Generate brief** y espera a que deje de poner _Checking…_. Señala:<br>• el aviso de modo IA y _Summary (AI-written)_;<br>• en _What the assistant said_, **Contradicted:** "I could not complete the transfer.";<br>• en _Findings_, ⛔ **Retry advice on a completed payment**;<br>• en _Procedures_, `[procedure-3 v2]`.                                 | "El brief extrae lo que dijo el asistente y lo contrasta con el banco. 'No pude completar la transferencia': contradicho, porque el banco la tiene como completada. Y peor, le aconsejó reintentar un pago ya hecho: un bloqueo. El modelo redacta, pero cada afirmación pasa por un verificador determinista. Lo que no se puede probar sale como 'Could not be verified', nunca en verde." |
+| 6:30 – 6:45 | **[A]** Baja por el panel: _Verified facts_, _Timeline_ y _Reply to customer_, con "Please do not send this payment again: it has already been completed."                                                                                                                                                                                                                                                   | "El borrador de respuesta solo usa hechos verificados, y se vuelve a comprobar antes de mostrarlo."                                                                                                                                                                                                                                                                                          |
+| 6:45 – 7:15 | **[A]** Baja hasta **Reply to send**:<br>1. Al final del texto añade una línea: `We will refund EUR 90 today.`<br>2. Clic en **Send and close**. Aparece una alerta roja que cita **EUR 90**.<br>3. Marca la casilla _I have checked these statements and take responsibility for them_.<br>4. Clic otra vez en **Send and close**. Aparece _Reply sent. The case is closed._ y el caso pasa a **Resolved**. | "Si Marta edita la respuesta y promete algo que el banco no respalda, como un reembolso de 90 euros, el envío se para y se lo señala. Puede enviarlo igualmente, firmando que se hace responsable, y queda auditado. Al enviar, el caso se cierra."                                                                                                                                          |
+| 7:15 – 7:25 | **[A]** En **VIEW AS** elige **Lucía Martín**. En la barra izquierda, bajo _CONVERSATIONS_, clic en **Dinner payment**. Al final aparece el mensaje firmado **Banana Bank support · Marta**.                                                                                                                                                                                                                 | "Y Lucía la ve en su conversación, firmada por una persona."                                                                                                                                                                                                                                                                                                                                 |
+| 7:25 – 7:35 | **[A]** Clip D, grabado al principio con `MODEL_PROVIDER=openai OPENAI_API_KEY=`: como Marta, el mismo caso, **Generate brief**. Señala "AI summary unavailable", el título _What the assistant said (pattern matching)_ y _Reply to customer (template)_.                                                                                                                                                   | "Si el modelo no responde, el brief no desaparece: se degrada a reglas deterministas y conservadoras. Menos texto, pero ningún veredicto que no esté probado."                                                                                                                                                                                                                               |
+
+## Bloque 7 · Método y uso de IA (7:35 – 8:20)
+
+| Tiempo      | Pantalla                                                                                                                                                                           | Locución                                                                                                                                                                                                                                      |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 7:35 – 7:50 | **[G]** Abre `{R}/blob/main/submission/ai-sessions.md#workflow`.                                                                                                                   | "Trabajé con Claude Code como equipo: un agente implementa en una copia aislada del repositorio, otro distinto lo revisa sin haberlo escrito, y yo apruebo antes de integrar. Las sesiones completas van en la entrega."                      |
+| 7:50 – 8:05 | **[G]** Abre `{R}/commits/main`, busca con `Ctrl+F` `deterministic verified case brief (Part 2, commit 4)` y abre ese commit. En el mensaje, señala el párrafo **Review 2 fixes**. | "Las revisiones cambiaron decisiones de verdad. Aquí, el revisor encontró frases que las reglas marcaban como contradichas sin serlo. Decidí que, sin modelo, las reglas sean conservadoras: si la frase no es inequívoca, no hay veredicto." |
+| 8:05 – 8:20 | **[G]** Abre `{R}/blob/main/submission/part2-design.md#10-decisions-log` y baja por la tabla.                                                                                      | "Cada decisión queda registrada con su porqué, incluidas las que descarté. Y la calidad del brief se mide con un eval que primero mide su propio ruido, ejecutando dos veces lo mismo, para no confundir azar con regresión."                 |
+
+## Bloque 8 · Cierre (8:20 – 8:35)
+
+| Tiempo      | Pantalla                                             | Locución                                                                                                                                                                                                                                                  |
+| ----------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 8:20 – 8:35 | **[A]** Como **Lucía Martín**, clic en **Overview**. | "En resumen: la Parte 1 hace que el dinero no se pierda ni se duplique cuando el banco falla, y la Parte 2 hace que ni el asistente ni el operador afirmen nada que el banco no respalde. Lo que falta para el lunes está escrito y priorizado. Gracias." |
