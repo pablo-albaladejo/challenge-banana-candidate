@@ -17,7 +17,7 @@ import type {
 import type { NewConversation, NewMessage } from '../../src/conversations/domain/conversation';
 import type { NewRun } from '../../src/assistant/application/ports/run-repository';
 import type { NewApproval } from '../../src/transfers/domain/approval';
-import type { NewIncident } from '../../src/support/incidents.repo';
+import type { NewIncident } from '../../src/support/domain/incident';
 import type { NewEvent } from '../../src/platform/telemetry/events.repo';
 import { accounts, conversations, customers, money } from './world';
 

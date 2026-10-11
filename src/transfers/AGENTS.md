@@ -74,7 +74,7 @@ Hexagonal vertical (plan §10): `domain/` (pure rules), `application/` (ports, s
 ### Internal
 
 - `../shared` (`DomainError`s, `BankFailure`, `Clock`, `Ids`, `UnitOfWork`), `../platform` (adapters and wiring only: `bank/`, `db/statement`, `telemetry/`, `config`, `runtime`, `http/`), `../identity` (`person`, wiring only), `../assistant` (`Tool` type only), `../types`.
-- Consumed by `../assistant/entry-points/tools/catalog.ts` (tools), `../accounts/http/dashboard.ts` (`listPendingTransfers`, `listLiveProposals`), `../support/operator-view.ts` (`getConversationTransfers`), `../server/routes.ts` (`confirmApproval`), `../server/seed.ts` (`infrastructure/sqlite-intents.repo`) and `../banking/actions.ts` (frozen shim).
+- Consumed by `../assistant/entry-points/tools/catalog.ts` (tools), `../accounts/http/dashboard.ts` (`listPendingTransfers`, `listLiveProposals`), `../support/entry-points/dependencies.ts` (`getConversationTransfers`, as support's `ConversationTransfers` port), `../server/routes.ts` (`confirmApproval`), `../server/seed.ts` (`infrastructure/sqlite-intents.repo`) and `../banking/actions.ts` (frozen shim).
 
 ### External
 

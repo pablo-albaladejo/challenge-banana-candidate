@@ -54,7 +54,7 @@ Next.js App Router root for the Banana Bank demo. Holds the root layout, the sin
 - `page.tsx` `confirm()` / approvals panel: UI trusts `a.payload` from the server and offers no re-validation or expiry display.
 - `catch {}` in `send()` silently swallows refresh failures.
 - Persona switching is unauthenticated by design: any visitor can become any person (including operators) via `session`.
-- `selectedCase.history`, `events`, `bank` render fields the backend `caseDetail` currently returns empty/null, so the operator detail view is mostly blank.
+- `selectedCase.history`, `events`, `bank` render fields the backend `getCaseDetail` (support) currently returns empty/null, so the operator detail view is mostly blank.
 
 ## Dependencies
 

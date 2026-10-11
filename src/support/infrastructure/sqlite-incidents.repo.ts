@@ -1,20 +1,6 @@
-import { statement } from '../platform/db/statement';
-export type IncidentRow = {
-  id: string;
-  user_id: string;
-  conversation_id: string;
-  summary: string;
-  status: string;
-  created_at: string;
-};
-export type NewIncident = {
-  id: string;
-  userId: string;
-  conversationId: string;
-  summary: string;
-  status: string;
-  createdAt: string;
-};
+import { statement } from '../../platform/db/statement';
+import type { IncidentRow, NewIncident } from '../domain/incident';
+import type { IncidentRepository } from '../application/ports/incident-repository';
 export function insertIncident(i: NewIncident) {
   statement(
     'INSERT INTO incidents(id,user_id,conversation_id,summary,status,created_at) VALUES(?,?,?,?,?,?)',
@@ -34,3 +20,9 @@ export function openIncidentIn(conversationId: string) {
     'open',
   ) as { id: string } | undefined;
 }
+export const sqliteIncidents: IncidentRepository = {
+  insert: insertIncident,
+  all: allIncidents,
+  byId: incidentById,
+  openIn: openIncidentIn,
+};

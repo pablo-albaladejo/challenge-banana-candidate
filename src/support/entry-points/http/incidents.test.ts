@@ -1,13 +1,13 @@
 import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { incidentDetail, listIncidents } from './incidents';
-import { seedApp } from '../../server/seed';
-import { HttpError } from '../../platform/http/http-error';
-import { cases, operators } from '../../../tests/fixtures/world';
-import type { Person } from '../../types';
+import { seedApp } from '../../../server/seed';
+import { HttpError } from '../../../platform/http/http-error';
+import { cases, operators } from '../../../../tests/fixtures/world';
+import type { Person } from '../../../types';
 
 // The session role is what the handler gates on. An actor whose session says customer but whose id
-// is an operator's passes `caseDetail`'s own person check, so only the handler gate rejects it.
+// is an operator's passes `getCaseDetail`'s own person check, so only the handler gate rejects it.
 const customerSession: Person = {
   id: operators.marta,
   name: 'Marta',

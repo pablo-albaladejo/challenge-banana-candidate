@@ -20,10 +20,10 @@ const rank = {
   assistant: 4,
 };
 const up = (depth) => '\\.\\./'.repeat(depth);
-/** Verticals already split into layers (7b, 7c, 7d.1, 7d.2): index-only from outside, seed excepted. */
-const layered = ['transfers', 'assistant', 'knowledge', 'conversations'];
-/** The layered verticals whose infrastructure/ the seed may import (`insertIntent`, `insertConversation`, `insertMessage`). */
-const seedInfrastructure = ['transfers', 'conversations'];
+/** Verticals already split into layers (7b, 7c, 7d.1, 7d.2, 7d.3): index-only from outside, seed excepted. */
+const layered = ['transfers', 'assistant', 'knowledge', 'conversations', 'support'];
+/** The layered verticals whose infrastructure/ the seed may import (`insertIntent`, `insertConversation`, `insertMessage`, `insertIncident`). */
+const seedInfrastructure = ['transfers', 'conversations', 'support'];
 const frozenShims = (depth) => ({
   regex: `^${up(depth)}((config|db|seed|auth|people)(\\.ts)?|(agent|banking|ingestion|retrieval)(/.*)?)$`,
   message: 'Frozen shims are for external callers only; import the module from its new path.',

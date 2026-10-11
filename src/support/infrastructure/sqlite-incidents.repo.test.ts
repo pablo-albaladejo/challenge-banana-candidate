@@ -1,8 +1,13 @@
 import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { appDb } from '../platform/db/db';
-import { allIncidents, incidentById, insertIncident, openIncidentIn } from './incidents.repo';
-import { incidentFactory } from '../../tests/fixtures/factories';
+import { appDb } from '../../platform/db/db';
+import {
+  allIncidents,
+  incidentById,
+  insertIncident,
+  openIncidentIn,
+} from './sqlite-incidents.repo';
+import { incidentFactory } from '../../../tests/fixtures/factories';
 
 describe('incidents repository', () => {
   beforeEach(() => appDb().exec('DELETE FROM incidents'));

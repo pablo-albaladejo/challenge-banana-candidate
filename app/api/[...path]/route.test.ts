@@ -27,6 +27,7 @@ import {
 } from '../../../tests/fixtures/factories';
 import {
   accounts,
+  cases,
   conversations,
   counts,
   customers,
@@ -481,6 +482,15 @@ describe('GET /api/dashboard', () => {
     assert.equal(result.status, 200);
     assert.equal(result.body.incidents.length, counts.cases);
     assert.equal(result.body.accounts, undefined);
+  });
+
+  it('should give an operator the same support cases as the case list', async () => {
+    // Arrange
+    const list = await api('GET', 'incidents', { as: operators.marta });
+    // Act
+    const result = await api('GET', 'dashboard', { as: operators.marta });
+    // Assert
+    assert.deepEqual(result.body, { incidents: list.body });
   });
 
   it('should require a session', async () => {
@@ -1523,12 +1533,36 @@ describe('GET /api/incidents', () => {
     assert.equal(result.body.length, counts.cases);
   });
 
+  it('should list the support cases newest first with their stored fields', async () => {
+    // Arrange
+    const fields = ['conversation_id', 'created_at', 'id', 'status', 'summary', 'user_id'];
+    // Act
+    const result = await api('GET', 'incidents', { as: operators.marta });
+    // Assert
+    const dates = result.body.map((c: any) => c.created_at);
+    assert.deepEqual(dates, [...dates].sort().reverse());
+    const shapes = new Set(result.body.map((c: any) => Object.keys(c).sort().join()));
+    assert.deepEqual(shapes, new Set([fields.join()]));
+    assert.equal(
+      result.body.filter((c: any) => c.status === 'open').length,
+      counts.cases - counts.closedCases,
+    );
+  });
+
   it('should reject a customer', async () => {
     // Arrange
     // Act
     const result = await api('GET', 'incidents', { as: customers.lucia });
     // Assert
     assert.equal(result.status, 403);
+  });
+
+  it('should reject a customer with the operator role message', async () => {
+    // Arrange
+    // Act
+    const result = await api('GET', 'incidents', { as: customers.lucia });
+    // Assert
+    assert.deepEqual(result.body, { error: 'Operator role required.' });
   });
 });
 
@@ -1545,6 +1579,16 @@ describe('GET /api/incidents/:id', () => {
     assert.equal(result.body.incident.id, incident.id);
     assert.equal(result.body.customer.id, incident.user_id);
     assert.equal(result.body.lastMessage.conversation_id, incident.conversation_id);
+  });
+
+  it('should answer the case detail with exactly its evidence fields', async () => {
+    // Arrange
+    const fields = ['bank', 'customer', 'events', 'gaps', 'history', 'incident', 'intents'];
+    // Act
+    const result = await api('GET', `incidents/${cases.lucia}`, { as: operators.marta });
+    // Assert
+    assert.equal(result.status, 200);
+    assert.deepEqual(Object.keys(result.body).sort(), [...fields, 'lastMessage'].sort());
   });
 
   it('should report an unknown case as not found', async () => {

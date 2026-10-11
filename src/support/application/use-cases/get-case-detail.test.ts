@@ -1,12 +1,20 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { caseDetail } from './operator-view';
-import { seedApp } from '../server/seed';
-import { HttpError } from '../platform/http/http-error';
-import { config } from '../platform/config';
-import { recordEvent } from '../platform/telemetry/telemetry';
-import { resetBank, startBank, stopBank } from '../../tests/support/bank';
-import { eventDataFactory, toolContextFactory } from '../../tests/fixtures/factories';
+import { support } from '../../entry-points/dependencies';
+import { makeGetCaseDetail } from './get-case-detail';
+import { seedApp } from '../../../server/seed';
+import { httpStatusOf } from '../../../platform/http/errors';
+import { ForbiddenError } from '../../../shared/domain/errors';
+import { sqliteIncidents } from '../../infrastructure/sqlite-incidents.repo';
+import { config } from '../../../platform/config';
+import { recordEvent } from '../../../platform/telemetry/telemetry';
+import { transfer } from '../../../platform/bank/bank';
+import { resetBank, startBank, stopBank } from '../../../../tests/support/bank';
+import {
+  eventDataFactory,
+  toolContextFactory,
+  transferInputFactory,
+} from '../../../../tests/fixtures/factories';
 import {
   cases,
   conversations,
@@ -14,14 +22,15 @@ import {
   historicTransfer,
   operators,
   unknown,
-} from '../../tests/fixtures/world';
+} from '../../../../tests/fixtures/world';
 const caseId = cases.luciaGuide;
+const caseDetail = (operatorId: string, incidentId: string) =>
+  support().getCaseDetail({ operatorId, incidentId });
 const rejectsWith = (status: number) => (e: unknown) => {
-  assert.ok(e instanceof HttpError);
-  assert.equal(e.status, status);
+  assert.equal(httpStatusOf(e), status);
   return true;
 };
-describe('caseDetail', () => {
+describe('getCaseDetail', () => {
   before(async () => {
     seedApp();
     await startBank();
@@ -63,7 +72,7 @@ describe('caseDetail', () => {
     const customer = customers.lucia;
     // Act & Assert
     await assert.rejects(caseDetail(customer, caseId), (e) => {
-      assert.ok(e instanceof HttpError);
+      assert.ok(e instanceof ForbiddenError);
       assert.equal(e.message, 'Operator role required.');
       return true;
     });
@@ -160,5 +169,92 @@ describe('caseDetail', () => {
     // Assert
     const intent = detail.intents.find((i: { id: string }) => i.id === historicTransfer.intentId)!;
     assert.equal(intent.status, 'completed');
+  });
+  it('should name both missing pieces of evidence, one sentence each', async () => {
+    // Arrange
+    const original = config.bankUrl;
+    config.bankUrl = 'http://127.0.0.1:9';
+    // Act
+    let detail;
+    try {
+      detail = await caseDetail(operators.marta, caseId);
+    } finally {
+      config.bankUrl = original;
+    }
+    // Assert
+    assert.equal(
+      detail.gaps,
+      'No agent activity was recorded for this conversation. The bank could not be reached, so its operations are not shown.',
+    );
+  });
+  it('should report no gaps when the agent activity and the bank are both there', async () => {
+    // Arrange
+    recordEvent(
+      toolContextFactory.build({ conversationId: conversations.luciaSupport }),
+      'tool.completed',
+      eventDataFactory.build({ status: 'completed' }),
+    );
+    // Act
+    const detail = await caseDetail(operators.marta, cases.lucia);
+    // Assert
+    assert.equal(detail.gaps, null);
+    assert.ok(detail.bank);
+  });
+  it('should show only the bank operations whose reference an intent of the case holds', async () => {
+    // Arrange
+    await transfer(customers.lucia, transferInputFactory.build(), `ref-outside-${caseId}`);
+    // Act
+    const detail = await caseDetail(operators.marta, cases.lucia);
+    // Assert
+    assert.deepEqual(
+      detail.bank!.operations.map((o: { reference: string }) => o.reference),
+      [historicTransfer.reference],
+    );
+  });
+  it('should return the case customer, not the operator who asks', async () => {
+    // Arrange
+    const operator = operators.pablo;
+    // Act
+    const detail = await caseDetail(operator, cases.lucia);
+    // Assert
+    assert.equal(detail.customer?.id, customers.lucia);
+    assert.equal(detail.customer?.role, 'customer');
+  });
+  it('should refuse a customer before looking up the case', async () => {
+    // Arrange
+    const customer = customers.lucia;
+    // Act & Assert
+    await assert.rejects(caseDetail(customer, unknown.case), (e) => {
+      assert.ok(e instanceof ForbiddenError);
+      assert.equal(httpStatusOf(e), 403);
+      return true;
+    });
+  });
+});
+
+describe('makeGetCaseDetail with stub ports', () => {
+  before(() => seedApp());
+
+  it('should name the bank as unreachable when its call throws before answering', async () => {
+    // Arrange
+    const getCaseDetail = makeGetCaseDetail({
+      people: {
+        find: (id) => ({ id, name: id, role: 'operator', initials: 'OP', color: '#000000' }),
+      },
+      incidents: sqliteIncidents,
+      history: { messagesIn: () => [] },
+      events: { inConversation: () => [] },
+      transfers: { reconcileAndList: async () => [] },
+      bank: {
+        customer: () => {
+          throw new URIError('URI malformed');
+        },
+      },
+    });
+    // Act
+    const detail = await getCaseDetail({ operatorId: operators.marta, incidentId: cases.lucia });
+    // Assert
+    assert.equal(detail.bank, null);
+    assert.match(detail.gaps!, /The bank could not be reached/);
   });
 });

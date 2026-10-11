@@ -48,7 +48,7 @@ Hexagonal vertical (plan §10, 7d.2): `domain/` (pure rules), `application/` (po
 ### Internal
 
 - `../platform` (`db/statement`, `http/`, `runtime`), `../shared` (`NotFoundError`, `Clock`, `Ids`).
-- Consumed by `../assistant/entry-points/` (`dependencies.ts`: the `ConversationLog` = `getOwnedConversation`, `appendMessage`, `listMessages`; `http/run-action.ts` and `http/post-message.ts`: `getOwnedConversation`, `titleConversation`), `../support/operator-view.ts` (`listMessages`), `../server/routes.ts` (the handlers) and `../server/seed.ts` (the two inserts, from `infrastructure/`).
+- Consumed by `../assistant/entry-points/` (`dependencies.ts`: the `ConversationLog` = `getOwnedConversation`, `appendMessage`, `listMessages`; `http/run-action.ts` and `http/post-message.ts`: `getOwnedConversation`, `titleConversation`), `../support/entry-points/dependencies.ts` (`listMessages`, as support's `ConversationHistory` port), `../server/routes.ts` (the handlers) and `../server/seed.ts` (the two inserts, from `infrastructure/`).
 
 ### External
 

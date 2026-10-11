@@ -1,3 +1,4 @@
 // Public surface of the support feature: other features import only from here.
-export { requestHumanTool } from './tools/request-human.tool';
-export { allIncidents, insertIncident } from './incidents.repo';
+export { support, type SupportApp } from './entry-points/dependencies';
+export { requestHumanTool } from './entry-points/tools/request-human.tool';
+export { incidentDetail, listIncidents } from './entry-points/http/incidents';

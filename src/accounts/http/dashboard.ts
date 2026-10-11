@@ -1,10 +1,10 @@
 import * as bank from '../../platform/bank/bank';
 import { transfers } from '../../transfers';
-import { allIncidents } from '../../support';
+import { support } from '../../support';
 import { json } from '../../platform/http/respond';
 import type { Handler } from '../../platform/http/context';
 export const dashboard: Handler = async ({ actor }) => {
-  if (actor.role === 'operator') return json({ incidents: allIncidents() });
+  if (actor.role === 'operator') return json(support().getOperatorWorkspace());
   const [accounts, movements, contacts, pending] = await Promise.all([
     bank.accounts(actor.id),
     bank.movements(actor.id),

@@ -8,7 +8,7 @@ import { currentSession, selectPerson } from '../identity/http/session';
 import { dashboard } from '../accounts/http/dashboard';
 import { conversationDetail, createConversation, listConversations } from '../conversations';
 import { confirmApproval } from '../transfers';
-import { incidentDetail, listIncidents } from '../support/http/incidents';
+import { incidentDetail, listIncidents } from '../support';
 import { postMessage, previewAnswer, runAction } from '../assistant';
 import { documentChunks, documentDetail, listDocuments, runIngestion, search } from '../knowledge';
 /** Answered before the actor is resolved: no session needed. */
