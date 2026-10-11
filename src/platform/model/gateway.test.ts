@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   activeProvider,
+  createAttributedResponse,
   createEmbeddings,
   createResponse,
   fallbackProvider,
@@ -302,5 +303,47 @@ describe('activeProvider', () => {
     const provider = await withEnv(vars, () => activeProvider());
     // Assert
     assert.equal(provider, 'openai');
+  });
+});
+
+describe('createAttributedResponse', () => {
+  let fake: FakeOpenAI;
+  let claude: FakeClaude;
+  before(async () => {
+    fake = await startFakeOpenAI();
+    claude = startFakeClaude();
+  });
+  after(async () => {
+    await fake.close();
+    claude.close();
+  });
+  beforeEach(() => {
+    fake.reset();
+    claude.reset();
+    setGatewayClock();
+  });
+
+  it('should name openai as the provider of an answer from the Responses API', async () => {
+    // Arrange
+    fake.script(reply('Hello.'));
+    // Act
+    const { provider, response } = await createAttributedResponse({ model: 'm', input: 'Hi' });
+    // Assert
+    assert.equal(provider, 'openai');
+    assert.equal(response.output_text, 'Hello.');
+  });
+
+  it('should name claude-cli as the provider when a quota error falls back to it', async (t) => {
+    // Arrange
+    t.mock.method(console, 'warn', () => {});
+    fake.script(quota);
+    claude.script(claudeText('Answered by Claude.'));
+    // Act
+    const { provider, response } = await withEnv({ MODEL_PROVIDER: 'auto' }, () =>
+      createAttributedResponse({ model: 'm', input: 'Hi' }),
+    );
+    // Assert
+    assert.equal(provider, 'claude-cli');
+    assert.equal(response.output_text, 'Answered by Claude.');
   });
 });

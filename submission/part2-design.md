@@ -1572,6 +1572,44 @@ This runs outside `npm test` and pre-push and spends OpenAI quota.
 - **Report.** `submission/eval-case-brief.json` holds each case × run × metric.
   `submission/eval-case-brief.md` holds the tables, the thresholds, the unmeasured count and the
   invariant results.
+- **Status: the generic harness base has landed** (commit 7 base, `evals/`, see `evals/AGENTS.md`).
+  - `evals/case.ts`: `EvalCase` with an input builder, labelled `must`/`mustNot` predicates and an
+    optional per-case N.
+  - `evals/runner.ts`: N = 3 by default against an injected subject. An unbuildable input, a
+    throw, a timeout or a bad parse is `unmeasured`: zero passes on every assertion, the report
+    `complete: false`, a non-zero exit. A malformed case or a throwing predicate is a harness
+    fault (exit 2).
+  - `evals/thresholds.ts`: `mustNot` at zero tolerance; `must` at the A/A mean − max(2 sample SD,
+    one run) over ≥ 3 complete A/A reports of the same suite and model (`--baseline`), `ungated`
+    until then.
+  - `evals/report.ts`: the console table and the JSON artifact (`.eval-results/`, gitignored, or
+    `--out`), with the model and provider observed through the gateway (`evals/model.ts`).
+  - `npm run eval -- <suite.ts>` (`scripts/eval.ts`) runs outside `npm test` and the hooks
+    (only its fake-subject example is spawned by `scripts/eval.test.ts`); `evals/example.eval.ts`
+    shows the shape with a fake subject. Reports default to
+    `.eval-results/` (gitignored).
+  - **Statuses and exit codes** (`evals/exit-code.ts`): `pass` 0; `aa` 0 (an explicit `--aa`
+    baseline-candidate run, complete and with no `mustNot` failure, reported as A/A, never as a
+    pass); `fail` or `incomplete` 1; a harness fault or any unexpected error 2; `ungated` 3 (complete
+    and no failure, but a quality assertion is not gated). Without a baseline the eval therefore
+    never exits 0 on quality it did not measure against noise.
+  - **Vacuous gates are refused.** A threshold ≤ 0 (margin ≥ A/A mean) or n < 3 is `too-noisy`,
+    treated like `ungated`, with the advice to raise N or add A/A runs. The SD is the sample
+    (Bessel) SD.
+  - **Baseline cross-checks.** A/A reports must be complete (an incomplete one is rejected), share
+    the suite, the model, the `must` keys and each key's n, and carry rates finite in [0, 1];
+    otherwise it is a harness fault, as are the same A/A report given twice (same `startedAt` or
+    path) and a report that is not an `--aa` run. A current key missing from the baseline is
+    `ungated`; a run on another model than the baseline's (provider order ignored) ungates every
+    quality gate (reason `model mismatch`), a key run a different n than in the baseline ungates it
+    (reason `n mismatch`), and a baseline of another suite is a harness fault.
+  - Still to come with commit 7: the 5 seeded cases, the case-brief subject (temporary data dir,
+    `wireSupport()`), the domain scorers as predicates, and the `submission/eval-case-brief.{json,md}`
+    output, behind `npm run eval:case-brief` (a wrapper for
+    `npm run eval -- evals/case-brief.eval.ts --out submission/eval-case-brief.json`, which also
+    writes the `.md`). Commit 7 also adds a suite-declared `metrics` hook so the quality metrics
+    above are gated **per metric** with a floor of one case (1/cases) rather than one run; the
+    per-assertion rates of the base harness then become diagnostics.
 
 ### 7.6 Why not evalite or promptfoo
 

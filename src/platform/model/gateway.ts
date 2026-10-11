@@ -3,7 +3,10 @@
 // claude-cli, see ./provider.ts) are decided once.
 import OpenAI from 'openai';
 import type { EmbeddingCreateParams } from 'openai/resources/embeddings';
-import type { ResponseCreateParamsNonStreaming } from 'openai/resources/responses/responses';
+import type {
+  Response,
+  ResponseCreateParamsNonStreaming,
+} from 'openai/resources/responses/responses';
 import { claudeCliAvailable, createClaudeResponse } from './claude-cli';
 import { isQuotaError, providerSetting, selectProvider, type ModelProvider } from './provider';
 export class MissingOpenAIKeyError extends Error {
@@ -78,14 +81,21 @@ export async function fallbackProvider(error: unknown, operation: 'responses' | 
   }
   return provider;
 }
-export async function createResponse(body: ResponseCreateParamsNonStreaming) {
-  if ((await activeProvider()) === 'claude-cli') return createClaudeResponse(body);
+/** A Responses call and the provider that actually answered it (after any quota fallback). */
+export async function createAttributedResponse(
+  body: ResponseCreateParamsNonStreaming,
+): Promise<{ provider: ModelProvider; response: Response }> {
+  if ((await activeProvider()) === 'claude-cli')
+    return { provider: 'claude-cli', response: await createClaudeResponse(body) };
   try {
-    return await openai().responses.create(body);
+    return { provider: 'openai', response: await openai().responses.create(body) };
   } catch (e) {
     if (!(await fallbackProvider(e, 'responses'))) throw e;
-    return createClaudeResponse(body);
+    return { provider: 'claude-cli', response: await createClaudeResponse(body) };
   }
+}
+export async function createResponse(body: ResponseCreateParamsNonStreaming) {
+  return (await createAttributedResponse(body)).response;
 }
 /** OpenAI only: Claude has no embeddings. Search falls back to lexical retrieval instead. */
 export async function createEmbeddings(body: EmbeddingCreateParams) {

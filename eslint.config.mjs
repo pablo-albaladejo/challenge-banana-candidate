@@ -384,7 +384,7 @@ export default defineConfig([
   },
   // Outside src/, only src/server may reach a feature's http/ handlers.
   {
-    files: ['app/**/*.{ts,tsx}', 'scripts/**/*.ts', 'tests/**/*.ts', '*.ts'],
+    files: ['app/**/*.{ts,tsx}', 'scripts/**/*.ts', 'tests/**/*.ts', 'evals/**/*.ts', '*.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
