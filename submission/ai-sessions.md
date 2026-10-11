@@ -1,0 +1,64 @@
+# How AI was used
+
+Draft written 2026-10-11 from the repository history and the design documents. This file explains the working method. **It does not replace the session exports**: the original sessions belong in `ai-sessions/` (or `ai-sessions.zip`) in this folder, as required by [`../docs/challenge.md`](../docs/challenge.md). Statements below cite a commit or a document; anything that cannot be traced is marked **TODO**.
+
+## Session exports
+
+| Item                                                             | Status                                                                                         |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Claude Code session `01R2TYiq7cTkUvhEF6rnSjGY`                   | Referenced in commit trailers (`Claude-Session:`). **TODO** add the original export file path. |
+| Other Claude Code sessions (earlier commits, parallel worktrees) | **TODO** list each export with its relative path, date and what it covered.                    |
+| Sessions in other tools, if any                                  | **TODO** state "none" or list them.                                                            |
+
+Do not substitute links or summaries for these files. **TODO:** verify each export opens and contains the first prompt.
+
+## Tools
+
+| Tool                                                       | Used for                                                                                                                                      | Evidence                                                                                                      |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Claude Code (Opus and Sonnet models)                       | Exploration, planning, implementation, review, documentation. Commits carry `Co-Authored-By: Claude Opus 5.5` and a `Claude-Session:` trailer | Commit trailers, for example `72409f1`, `8b5769e`, `df4cc7a`                                                  |
+| oh-my-claudecode agents (executor, critic, writer, others) | Role-split passes: planning, independent review, authoring                                                                                    | Design docs record a critic pass (`part2-design.md` "Revision 2"; `architecture-decoupling.md` section 10.11) |
+| Claude CLI as a runtime model (`claude -p`)                | Product feature, not a dev tool: the `claude-cli` provider that kept chat usable without OpenAI credit                                        | `966f5e0`, `55b0e8a`, `502fa3e`                                                                               |
+| Pablo's AI engineering notes hub                           | Routed readings that fed the Part 2 design (book chapters and prior decision notes)                                                           | `part2-design.md` section 3.2; **TODO** confirm whether the hub may be cited in a submission                  |
+| OpenAI `gpt-6-luna`                                        | Product model only. Tests never reach it (scripted fake server)                                                                               | `TESTING.md`                                                                                                  |
+
+## Workflow
+
+1. **Plan before code, in a document.** Large work started as a written plan reviewed before execution: the decoupling plan (`ee7d4c0` replaced a draft with "the consensus plan and user decisions") and the Part 2 design (`925d9c6`). Both contain a decisions log with the discarded options.
+2. **Executor builds, an independent reviewer checks, fixes follow.** One agent implements a bounded commit; a separate reviewer or critic agent evaluates it in a fresh context; findings are fixed before the commit lands. Visible in the history as a feature commit followed by a hardening commit: `df4cc7a` then `8b5769e` (pre-flight checks), `966f5e0` then `55b0e8a` then `502fa3e` (claude-cli provider, the last one after real `haiku` calls failed). The writer of a change does not approve it.
+3. **Human approval before each push.** Pablo reviews and approves each commit before it is pushed; the pre-push hook then runs `npm test` and `npm run test:e2e`. The repository's working agreement is commit and push straight to `main`, with no branches or PRs (this repo only). **TODO** Pablo to confirm and, if wanted, add an example of a commit he sent back.
+4. **Red-first TDD.** A failing test first, confirmed to fail for the right reason, then the fix. Rule 6 of `TESTING.md` bans `skip`, `only` and `todo`, and forbids tests that assert known-wrong behaviour. `420cbed` states "The tests were rewritten first and failed before the change."
+5. **Characterisation before refactor.** Every Phase 7 split pins current behaviour with tests that are green on the old code first (`486b608`, `0324534`, `e286052`, `446169e`, `be80fc4`), then moves the code.
+6. **Fire-proofs by mutation.** Safety claims are tested by breaking the code and watching a test go red. `be80fc4` lists 13 mutations of the accounts vertical (flipped role check, user id taken from the query, sequential reads, and others), each of which turned a test red. `1e6c507` does the same for the lint rules: 26 probes run through the ESLint API without touching disk, 13 of which passed before the change and error after it.
+7. **Worktrees for parallel agents.** Independent lanes run in isolated git worktrees so agents do not share a working tree (`4b43682` ignores `.claude/worktrees` in git and ESLint). The Part 2 plan schedules commits 1 to 3 in parallel with Phase 7c/7d, with a stated hard ordering where files overlap.
+8. **Gates, not trust.** Each commit reports its gates: lint, `format:check`, `typecheck`, the test count, a check that no test title was lost in a move (`comm -23` against the previous commit), and the import-graph test. Husky hooks run them; `--no-verify` is not used.
+9. **Docs written by a separate pass.** Submission materials are drafted by a documentation agent that is not allowed to edit code, and reviewed afterwards.
+
+## Representative decisions
+
+Taken from the decisions tables. "Human" marks entries the document records as a user decision.
+
+| Decision                              | Chosen                                                           | Discarded                                   | Who / source                                                                                                            |
+| ------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Sequencing of refactor vs money fixes | Phases 1 to 3, then the P0 money-path block, then phases 4 and 5 | Refactor first, fixes last                  | Human, `architecture-decoupling.md` section 8, item 1                                                                   |
+| Go/no-go after Phase 3                | Approved with a time report against 11 h                         | No checkpoint                               | Human, section 8, item 2                                                                                                |
+| Route quirks (405, trailing segments) | Separate, test-first commit (`420cbed`)                          | Folding behaviour changes into the refactor | Human, section 8, item 4                                                                                                |
+| Illegal intent transitions            | Reject, test first                                               | Permissive transitions                      | Human, section 8, item 5                                                                                                |
+| Full Phase 7 before Part 2            | Yes                                                              | Starting Part 2 on the flat layout          | Human, `architecture-decoupling.md` section 10.11, decision 5                                                           |
+| Blocker and the Confirm button        | Stays enabled, relabelled "Confirm these details anyway"         | Disabling it; "Confirm anyway"              | Human, `part2-design.md` section 10                                                                                     |
+| Name the customer sees on a reply     | "Banana Bank support - Marta" (first name)                       | A server-side name; no name                 | Human, `part2-design.md` section 10                                                                                     |
+| Message after a case is closed        | Opens a new case                                                 | Reopening the closed case                   | Human, `part2-design.md` section 10                                                                                     |
+| Elena's reversal                      | Operator-only; the draft never promises it                       | Reversal guidance in the draft              | Human, `part2-design.md` section 10                                                                                     |
+| Shape of the operator copilot         | Fixed workflow with two single model calls                       | An operator agent with tools                | Agent design, accepted; `part2-design.md` section 10                                                                    |
+| Who detects false claims              | A code oracle against the bank                                   | The model reviewing its own text            | Agent design, accepted; `part2-design.md` section 10                                                                    |
+| Real-model eval                       | Cut to the five seeded cases                                     | Synthetic extra cases                       | Critic finding, applied; `part2-design.md` "Revision 2"                                                                 |
+| Brief cache, `fee` and `limit` checks | Cut                                                              | Keeping them                                | Critic finding, applied; `part2-design.md` section 10                                                                   |
+| Pre-flight reconcile                  | Reconcile up to 3 failed/unknown intents to the recipient first  | Reading stored statuses                     | Reason: a stored `failed` can be a completed payment (Lucía's EUR 85 to Bruno); `df4cc7a`, `part2-design.md` section 10 |
+
+Cases where a reviewer overrode the executor: the critic's findings M1 to M4 on the decoupling plan (`architecture-decoupling.md` section 10.11), and the hardening commits listed under workflow step 2. **TODO** Pablo to add one or two first-hand examples of overriding the AI, with the session reference, since the documents above record outcomes rather than the conversation.
+
+## Limits of this account
+
+- Derived from commits and documents after the fact; it is not a transcript.
+- The split between "agent proposed" and "human decided" is taken from the documents' own wording ("User decision"); sessions may show more nuance. **TODO** verify against the exports.
+- Time spent per phase is not recorded here. **TODO** if wanted, from the Phase 3 checkpoint report.
