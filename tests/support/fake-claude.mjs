@@ -48,6 +48,7 @@ const result = (fields) =>
     is_error: !!fields.isError,
     duration_ms: 1,
     num_turns: 1,
+    stop_reason: 'end_turn',
     result: fields.result ?? '',
     ...(fields.structured === undefined ? {} : { structured_output: fields.structured }),
     session_id: 'fake-session',

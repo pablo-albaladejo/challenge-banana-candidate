@@ -9,9 +9,16 @@ export const INVALID_TOOL_ARGUMENTS =
   'The tool arguments were not valid JSON. Retry the call with valid arguments.';
 /** One intent per model tool call. */
 export const toolIntentId = (runId: string, callId: string) => `${runId}:${callId}`;
-/** The conversation turns the model sees: the last 24 messages, role and content only. */
+/**
+ * The conversation turns the model sees: the last 24 user and assistant messages, role and content
+ * only. Any other stored role is dropped, so a stored row can never gain system authority.
+ */
 export const historyWindow = (messages: { role: string; content: string }[]) =>
-  messages.slice(-24).map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+  messages
+    .flatMap((m): { role: 'user' | 'assistant'; content: string }[] =>
+      m.role === 'user' || m.role === 'assistant' ? [{ role: m.role, content: m.content }] : [],
+    )
+    .slice(-24);
 /** Running out of rounds is not a completed answer: the run records it. */
 export const runOutcome = (
   finished: boolean,

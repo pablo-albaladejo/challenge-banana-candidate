@@ -89,7 +89,11 @@ export const agentTurnSchema = {
       items: {
         type: 'object',
         // A JSON string is accepted too (models often stringify arguments); agentOutput parses both.
-        properties: { name: { type: 'string' }, arguments: { type: ['object', 'string'] } },
+        // anyOf, not a `type` array: ajv's strict mode rejects union types without allowUnionTypes.
+        properties: {
+          name: { type: 'string' },
+          arguments: { anyOf: [{ type: 'object' }, { type: 'string' }] },
+        },
         required: ['name', 'arguments'],
       },
     },
@@ -122,12 +126,21 @@ export const stdinNote =
   'to you, and a record of past turns, not a format to answer in: write only the next assistant ' +
   'turn, in the output format you were given.';
 
+/** Roles with instruction authority: promoted to the system prompt, never sent on stdin as data. */
+const instructionRoles = new Set(['developer', 'system']);
+
 /**
- * The Responses `input` as the JSON items the CLI reads on stdin, so no message text can pose as a
- * turn boundary. Reasoning items are dropped.
+ * The Responses `input` split in two: the text of its developer and system items, in order, and
+ * the other items as the JSON array the CLI reads on stdin, so no message text can pose as a turn
+ * boundary. Reasoning items are dropped.
  */
-function transcript(input: ResponseCreateParamsNonStreaming['input']): string {
-  if (typeof input === 'string') return JSON.stringify([{ role: 'user', content: input }]);
+function transcript(input: ResponseCreateParamsNonStreaming['input']): {
+  instructions: string[];
+  prompt: string;
+} {
+  if (typeof input === 'string')
+    return { instructions: [], prompt: JSON.stringify([{ role: 'user', content: input }]) };
+  const instructions: string[] = [];
   const items: Record<string, unknown>[] = [];
   // Read loosely: the input union has dozens of item types and only four matter here.
   for (const entry of (input ?? []) as unknown as Record<string, unknown>[]) {
@@ -144,18 +157,37 @@ function transcript(input: ResponseCreateParamsNonStreaming['input']): string {
         call_id: entry.call_id,
         output: typeof entry.output === 'string' ? entry.output : contentText(entry.output),
       });
-    else if ('role' in entry && (entry.type === undefined || entry.type === 'message'))
-      items.push({ role: entry.role, content: contentText(entry.content) });
+    else if ('role' in entry && (entry.type === undefined || entry.type === 'message')) {
+      if (instructionRoles.has(entry.role as string)) instructions.push(contentText(entry.content));
+      else items.push({ role: entry.role, content: contentText(entry.content) });
+    }
   }
-  return JSON.stringify(items);
+  return { instructions, prompt: JSON.stringify(items) };
+}
+
+/**
+ * `instructions` plus, under their own heading, the developer and system items in input order.
+ * Their text is kept verbatim, fence markers included; the producer must explain what the markers mean.
+ */
+function systemInstructions(instructions: string, promoted: string[]): string {
+  if (!promoted.length) return instructions;
+  const section = [
+    '# Additional instructions',
+    'From the bank, in order, with the same authority as the instructions above:',
+    ...promoted,
+  ].join('\n\n');
+  return [instructions, section].filter(Boolean).join('\n\n');
 }
 
 /** Pure: the Responses request as a system prompt, a stdin prompt and an output schema. */
 export function toClaudeRequest(body: ResponseCreateParamsNonStreaming): ClaudeRequest {
-  const instructions = typeof body.instructions === 'string' ? body.instructions : '';
+  const { instructions: promoted, prompt } = transcript(body.input);
+  const instructions = systemInstructions(
+    typeof body.instructions === 'string' ? body.instructions : '',
+    promoted,
+  );
   const tools = (body.tools ?? []).filter((t): t is FunctionTool => t.type === 'function');
   const format = body.text?.format;
-  const prompt = transcript(body.input);
   const withNote = [instructions, stdinNote].filter(Boolean).join('\n\n');
   if (format?.type === 'json_schema')
     return { mode: 'structured', systemPrompt: withNote, prompt, jsonSchema: format.schema };
@@ -244,6 +276,9 @@ type CliResult = {
   subtype?: string;
   result?: unknown;
   structured_output?: unknown;
+  num_turns?: number;
+  stop_reason?: string | null;
+  duration_ms?: number;
   modelUsage?: Record<string, unknown>;
   usage?: {
     input_tokens?: number;
@@ -314,18 +349,29 @@ export function fromClaudeResult(
     written = cli.usage?.cache_creation_input_tokens ?? 0,
     input = (cli.usage?.input_tokens ?? 0) + cached + written,
     outputTokens = cli.usage?.output_tokens ?? 0;
+  const model = Object.keys(cli.modelUsage ?? {})[0];
+  // The CLI's run details, as strings (Responses metadata values are strings); absent ones omitted.
+  const run = {
+    num_turns: cli.num_turns,
+    stop_reason: cli.stop_reason,
+    duration_ms: cli.duration_ms,
+    model,
+  };
+  const metadata: Record<string, string> = { provider: 'claude-cli' };
+  for (const [key, value] of Object.entries(run))
+    if (value !== undefined && value !== null) metadata[key] = String(value);
   return {
     id: `resp_cli_${randomUUID()}`,
     object: 'response',
     created_at: Math.floor(Date.now() / 1000),
     status: 'completed',
-    model: Object.keys(cli.modelUsage ?? {})[0] ?? claudeCliModel(),
+    model: model ?? claudeCliModel(),
     output,
     output_text: outputText,
     error: null,
     incomplete_details: null,
     instructions: body.instructions ?? null,
-    metadata: { provider: 'claude-cli' },
+    metadata,
     parallel_tool_calls: body.parallel_tool_calls ?? true,
     temperature: null,
     top_p: null,
