@@ -4,6 +4,7 @@ import { faker } from '@faker-js/faker';
 import { GET, POST } from './route';
 import { seedApp } from '../../../src/server/seed';
 import { appDb } from '../../../src/platform/db/db';
+import { featureFlags, loadFeatureFlags } from '../../../src/platform/config';
 import { sessionToken } from '../../../src/auth';
 import { documents } from '../../../src/knowledge';
 import { assistant } from '../../../src/assistant';
@@ -327,6 +328,147 @@ describe('POST /api/session', () => {
     // Assert
     assert.equal(response.status, 400);
     assert.equal((await response.json()).error, 'Invalid request data.');
+  });
+});
+
+// With the switcher off, `people` and POST `session` leave the route table: every answer must be the
+// one an unknown route (or a path with only other methods) gives, so the gated paths cannot be told
+// apart from absent ones, with or without a session.
+const answer = ({ status, body, headers }: Awaited<ReturnType<typeof api>>) => ({
+  status,
+  body,
+  allow: headers.get('allow'),
+  cookie: headers.get('set-cookie'),
+});
+
+describe('persona switcher turned off (DEMO_PERSONA_SWITCHER)', () => {
+  let saved: boolean;
+  before(() => {
+    saved = featureFlags.demoPersonaSwitcher;
+    featureFlags.demoPersonaSwitcher = false;
+  });
+  after(() => {
+    featureFlags.demoPersonaSwitcher = saved;
+  });
+
+  it('should answer GET people as an unknown route', async () => {
+    // Arrange
+    const unknownRoute = answer(await api('GET', 'does-not-exist'));
+    // Act
+    const result = answer(await api('GET', 'people'));
+    // Assert
+    assert.equal(result.status, 401);
+    assert.deepEqual(result, unknownRoute);
+  });
+
+  it('should answer GET people as an unknown route even with a session', async () => {
+    // Arrange
+    const unknownRoute = answer(await api('GET', 'does-not-exist', { as: operators.marta }));
+    // Act
+    const result = answer(await api('GET', 'people', { as: operators.marta }));
+    // Assert
+    assert.equal(result.status, 404);
+    assert.deepEqual(result, unknownRoute);
+  });
+
+  it('should answer POST people as an unknown route', async () => {
+    // Arrange
+    const unknownRoute = answer(await api('POST', 'does-not-exist', { body: {} }));
+    // Act
+    const result = answer(await api('POST', 'people', { body: {} }));
+    // Assert
+    assert.equal(result.status, 401);
+    assert.deepEqual(result, unknownRoute);
+  });
+
+  it('should answer POST people as an unknown route even with a session', async () => {
+    // Arrange
+    const options = { as: customers.lucia, body: {} };
+    const unknownRoute = answer(await api('POST', 'does-not-exist', options));
+    // Act
+    const result = answer(await api('POST', 'people', options));
+    // Assert
+    assert.equal(result.status, 404);
+    assert.deepEqual(result, unknownRoute);
+  });
+
+  it('should answer POST session as an unknown route and set no cookie', async () => {
+    // Arrange
+    const body = { userId: customers.lucia };
+    const unknownRoute = answer(await api('POST', 'does-not-exist', { body }));
+    // Act
+    const result = answer(await api('POST', 'session', { body }));
+    // Assert
+    assert.equal(result.status, 401);
+    assert.equal(result.cookie, null);
+    assert.deepEqual(result, unknownRoute);
+  });
+
+  it('should answer POST session with a session like a path that only accepts GET', async () => {
+    // Arrange
+    const options = { as: customers.lucia, body: { userId: operators.pablo } };
+    const getOnlyRoute = answer(await api('POST', 'dashboard', options));
+    // Act
+    const result = answer(await api('POST', 'session', options));
+    // Assert
+    assert.equal(result.status, 405);
+    assert.equal(result.allow, 'GET, HEAD');
+    assert.equal(result.cookie, null);
+    assert.deepEqual(result, getOnlyRoute);
+  });
+
+  it('should refuse to select an operator and set no cookie', async () => {
+    // Arrange
+    const body = { userId: operators.pablo };
+    // Act
+    const result = await api('POST', 'session', { body });
+    // Assert
+    assert.equal(result.status, 401);
+    assert.equal(result.headers.get('set-cookie'), null);
+  });
+
+  it('should refuse POST session before reading the body', async () => {
+    // Arrange
+    const request = new Request('http://127.0.0.1:3000/api/session', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{"userId":',
+    });
+    // Act
+    const response = await POST(request, { params: Promise.resolve({ path: ['session'] }) });
+    // Assert
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), { error: 'Select a person to continue.' });
+  });
+
+  it('should still resolve the person of an existing signed session', async () => {
+    // Arrange
+    // Act
+    const result = await api('GET', 'session', { as: customers.lucia });
+    // Assert
+    assert.equal(result.status, 200);
+    assert.equal(result.body.person.id, customers.lucia);
+  });
+});
+
+describe('persona switcher with the production default (DEMO_PERSONA_SWITCHER unset)', () => {
+  let saved: boolean;
+  before(() => {
+    saved = featureFlags.demoPersonaSwitcher;
+  });
+  after(() => {
+    featureFlags.demoPersonaSwitcher = saved;
+  });
+
+  it('should answer GET people as an unknown route when the flags load with NODE_ENV production', async () => {
+    // Arrange
+    Object.assign(featureFlags, loadFeatureFlags({ NODE_ENV: 'production' }));
+    const unknownRoute = answer(await api('GET', 'does-not-exist', { as: customers.lucia }));
+    // Act
+    const result = answer(await api('GET', 'people', { as: customers.lucia }));
+    // Assert
+    assert.equal(result.status, 404);
+    assert.deepEqual(result, unknownRoute);
   });
 });
 

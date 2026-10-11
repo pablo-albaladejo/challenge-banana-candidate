@@ -2,7 +2,13 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { faker } from '@faker-js/faker';
-import { assertProductionSecrets, loadConfig, localDefaultSecrets } from './config';
+import {
+  assertProductionSecrets,
+  assertNoPersonaSwitcherInProduction,
+  loadConfig,
+  loadFeatureFlags,
+  localDefaultSecrets,
+} from './config';
 
 const strongSecret = () => faker.string.alphanumeric({ length: 40 });
 const strongSecrets = () => ({
@@ -238,4 +244,71 @@ describe('assertProductionSecrets', () => {
         !e.message.includes(shared),
     );
   });
+});
+
+describe('loadFeatureFlags', () => {
+  for (const nodeEnv of [undefined, 'development', 'test']) {
+    it(`should turn the persona switcher on by default when NODE_ENV is ${nodeEnv}`, () => {
+      // Arrange
+      const env = { NODE_ENV: nodeEnv };
+      // Act
+      const flags = loadFeatureFlags(env);
+      // Assert
+      assert.equal(flags.demoPersonaSwitcher, true);
+    });
+  }
+  it('should turn the persona switcher off by default in production', () => {
+    // Arrange
+    const env = { NODE_ENV: 'production', DEMO_PERSONA_SWITCHER: '' };
+    // Act
+    const flags = loadFeatureFlags(env);
+    // Assert
+    assert.equal(flags.demoPersonaSwitcher, false);
+  });
+  for (const value of ['1', 'true', ' TRUE ']) {
+    it(`should turn the persona switcher on in production when it is set to '${value}'`, () => {
+      // Arrange
+      const env = { NODE_ENV: 'production', DEMO_PERSONA_SWITCHER: value };
+      // Act
+      const flags = loadFeatureFlags(env);
+      // Assert
+      assert.equal(flags.demoPersonaSwitcher, true);
+    });
+  }
+  for (const value of ['0', 'false', 'off', 'yes']) {
+    it(`should turn the persona switcher off outside production when it is set to '${value}'`, () => {
+      // Arrange
+      const env = { NODE_ENV: 'development', DEMO_PERSONA_SWITCHER: value };
+      // Act
+      const flags = loadFeatureFlags(env);
+      // Assert
+      assert.equal(flags.demoPersonaSwitcher, false);
+    });
+  }
+});
+
+describe('assertNoPersonaSwitcherInProduction', () => {
+  it('should refuse the persona switcher in production, naming the variable', () => {
+    // Arrange
+    const flags = { demoPersonaSwitcher: true };
+    // Act & Assert
+    assert.throws(
+      () => assertNoPersonaSwitcherInProduction(flags, 'production'),
+      (e: Error) => /DEMO_PERSONA_SWITCHER/.test(e.message) && !e.message.includes('\n'),
+    );
+  });
+  it('should accept production with the persona switcher off', () => {
+    // Arrange
+    const flags = { demoPersonaSwitcher: false };
+    // Act & Assert
+    assert.doesNotThrow(() => assertNoPersonaSwitcherInProduction(flags, 'production'));
+  });
+  for (const nodeEnv of [undefined, 'development', 'test']) {
+    it(`should accept the persona switcher outside production when NODE_ENV is ${nodeEnv}`, () => {
+      // Arrange
+      const flags = { demoPersonaSwitcher: true };
+      // Act & Assert
+      assert.doesNotThrow(() => assertNoPersonaSwitcherInProduction(flags, nodeEnv));
+    });
+  }
 });

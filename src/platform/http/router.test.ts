@@ -80,6 +80,28 @@ describe('match', () => {
     assert.deepEqual(result, { handler: 'GET documents/:id', params: { id: 'latest' } });
   });
 
+  it('should skip a route whose enabled check is off', () => {
+    // Arrange
+    const routes: Route<string>[] = [
+      { method: 'GET', pattern: 'people', handler: 'GET people', enabled: () => false },
+    ];
+    // Act
+    const result = match(routes, 'GET', ['people']);
+    // Assert
+    assert.equal(result, null);
+  });
+
+  it('should match a route whose enabled check is on', () => {
+    // Arrange
+    const routes: Route<string>[] = [
+      { method: 'GET', pattern: 'people', handler: 'GET people', enabled: () => true },
+    ];
+    // Act
+    const result = match(routes, 'GET', ['people']);
+    // Assert
+    assert.equal(result?.handler, 'GET people');
+  });
+
   it('should return null when no route matches', () => {
     // Arrange
     const routes = table(['GET', 'health'], ['GET', 'people']);
@@ -125,6 +147,18 @@ describe('allowedMethods', () => {
     const result = allowedMethods(routes, ['conversations']);
     // Assert
     assert.deepEqual(result, ['GET', 'HEAD', 'POST']);
+  });
+
+  it('should leave out the method of a route whose enabled check is off', () => {
+    // Arrange
+    const routes: Route<string>[] = [
+      { method: 'GET', pattern: 'session', handler: 'GET session' },
+      { method: 'POST', pattern: 'session', handler: 'POST session', enabled: () => false },
+    ];
+    // Act
+    const result = allowedMethods(routes, ['session']);
+    // Assert
+    assert.deepEqual(result, ['GET', 'HEAD']);
   });
 
   it('should return no methods for an unknown path', () => {

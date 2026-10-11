@@ -180,6 +180,60 @@ describe('Persona switch', () => {
     );
   });
 });
+describe('Persona switcher turned off', () => {
+  // The server's answers with DEMO_PERSONA_SWITCHER off (pinned in app/api/[...path]/route.test.ts):
+  // `people` and POST `session` are absent routes, so a visitor without a session gets 401 and one
+  // with a stale session gets 404 for `people`. The stack under test keeps the switcher on.
+  const offMessage =
+    'Choosing a person is turned off on this production server. Run npm run dev to try the demo.';
+  const noSession = { status: 401, json: { error: 'Select a person to continue.' } };
+  const notFound = { status: 404, json: { error: 'Route not found.' } };
+  it('should explain that no person can be chosen instead of showing the picker', async ({
+    page,
+  }) => {
+    // Arrange
+    const selections: string[] = [];
+    await page.route('**/api/people', (route) => route.fulfill(noSession));
+    await page.route('**/api/session', (route) => {
+      if (route.request().method() === 'POST') selections.push(route.request().url());
+      return route.fulfill(noSession);
+    });
+    // Act
+    await page.goto('/');
+    // Assert
+    await expect(page.getByRole('status')).toHaveText(offMessage);
+    await expect(page.getByText('Persona switching is off')).toBeVisible();
+    await expect(page.getByLabel('Switch person')).toHaveCount(0);
+    await expect(page.getByText('Getting things ready…')).toHaveCount(0);
+    expect(selections).toHaveLength(0);
+  });
+  it('should explain that no person can be chosen when a stale session finds no people route', async ({
+    page,
+  }) => {
+    // Arrange
+    await page.route('**/api/people', (route) => route.fulfill(notFound));
+    // Act
+    await page.goto('/');
+    // Assert
+    await expect(page.getByRole('status')).toHaveText(offMessage);
+    await expect(page.getByLabel('Switch person')).toHaveCount(0);
+  });
+  it('should show the server error when the people list fails for another reason', async ({
+    page,
+  }) => {
+    // Arrange
+    const failure = { status: 500, json: { error: 'Unexpected server error.' } };
+    await page.route('**/api/people', (route) => route.fulfill(failure));
+    // Act
+    await page.goto('/');
+    // Assert
+    await expect(
+      page.getByRole('alert').filter({ hasText: 'Unexpected server error.' }),
+    ).toBeVisible();
+    await expect(page.getByText('Persona switching is off')).toHaveCount(0);
+    await expect(page.getByText(offMessage)).toHaveCount(0);
+  });
+});
 describe('Rejected transfer', () => {
   beforeEach(() => resetBank());
   it('should show the bank reason in a dismissible notice when the bank rejects a transfer', async ({

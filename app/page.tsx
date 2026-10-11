@@ -15,6 +15,7 @@ import { TransferForm } from './_ui/transfers/TransferForm';
 export default function Home() {
   const [people, setPeople] = useState<Person[]>([]),
     [current, setCurrent] = useState<Person | null>(null),
+    [switcherOff, setSwitcherOff] = useState(false),
     [tab, setTab] = useState('overview');
   const [dashboard, setDashboard] = useState<AnyRecord | null>(null),
     [conversations, setConversations] = useState<AnyRecord[]>([]),
@@ -81,10 +82,19 @@ export default function Home() {
     }
   }
   useEffect(() => {
-    api('people').then(setPeople);
-    api('session')
-      .then((x) => selectPerson(x.person.id))
-      .catch(() => selectPerson('lucia'));
+    // With DEMO_PERSONA_SWITCHER off the server has no `people` route: it answers 401 without a
+    // session and 404 with one. Nobody can be selected, so say why; any other failure is an error.
+    api('people')
+      .then((list) => {
+        setPeople(list);
+        return api('session')
+          .then((x) => selectPerson(x.person.id))
+          .catch(() => selectPerson('lucia'));
+      })
+      .catch((e: Error & { status?: number }) => {
+        if (e.status === 401 || e.status === 404) setSwitcherOff(true);
+        else setError(e.message);
+      });
   }, []);
   useEffect(() => {
     messagesEnd.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -310,6 +320,7 @@ export default function Home() {
           operator={operator}
           current={current}
           people={people}
+          switcherOff={switcherOff}
           onSelectPerson={selectPerson}
         />
         <main>
@@ -322,7 +333,12 @@ export default function Home() {
             onSendAnyway={sendAnyway}
             onDismissNotice={dismissNotice}
           />
-          {!current || !dashboard ? (
+          {switcherOff ? (
+            <div className="loading" role="status">
+              Choosing a person is turned off on this production server. Run{' '}
+              <code>npm run dev</code> to try the demo.
+            </div>
+          ) : !current || !dashboard ? (
             <div className="loading">
               <span className="spinner" /> Getting things ready…
             </div>

@@ -3,18 +3,21 @@
 import type { Route } from '../platform/http/router';
 import type { Handler, PublicHandler } from '../platform/http/context';
 import { health } from '../platform/http/health';
-import { currentSession, listPeople, selectPerson } from '../identity';
+import { currentSession, listPeople, personaSwitcherEnabled, selectPerson } from '../identity';
 import { dashboard } from '../accounts';
 import { conversationDetail, createConversation, listConversations } from '../conversations';
 import { confirmApproval } from '../transfers';
 import { incidentDetail, listIncidents } from '../support';
 import { postMessage, previewAnswer, runAction } from '../assistant';
 import { documentChunks, documentDetail, listDocuments, runIngestion, search } from '../knowledge';
-/** Answered before the actor is resolved: no session needed. */
+/**
+ * Answered before the actor is resolved: no session needed. With `DEMO_PERSONA_SWITCHER` off,
+ * `people` and POST `session` are absent from the table (P0-7), so they answer like unknown routes.
+ */
 export const publicRoutes: Route<PublicHandler>[] = [
   { method: 'GET', pattern: 'health', handler: health },
-  { method: 'GET', pattern: 'people', handler: listPeople },
-  { method: 'POST', pattern: 'session', handler: selectPerson },
+  { method: 'GET', pattern: 'people', handler: listPeople, enabled: personaSwitcherEnabled },
+  { method: 'POST', pattern: 'session', handler: selectPerson, enabled: personaSwitcherEnabled },
 ];
 export const routes: Route<Handler>[] = [
   { method: 'GET', pattern: 'session', handler: currentSession },

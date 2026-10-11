@@ -12,7 +12,8 @@ const methodNotAllowed = (allow: string[]) =>
  * POST, then the public routes (a wrong method on a public-only path is a 405), then the actor from
  * the signed cookie (so an unknown or wrong-method private route without a session is a 401), then
  * the route table: a known path with another method is a 405 with `Allow`, an unknown one a 404.
- * HEAD is answered as GET. Errors map to JSON.
+ * A route switched off by its `enabled` check (the persona switcher, P0-7) counts as absent at
+ * every step. HEAD is answered as GET. Errors map to JSON.
  */
 export async function handle(request: Request, context: CatchAllContext) {
   try {

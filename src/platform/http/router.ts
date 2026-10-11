@@ -1,8 +1,10 @@
 // Matches path segments against an ordered route table. Patterns are `/`-separated: a literal or
 // `:name` (one required segment); the path must have exactly as many segments as the pattern.
 // HEAD matches GET routes; the first match wins and no match is `null` (the caller's 404 or 405).
+// A route whose `enabled()` returns false is absent: it neither matches nor adds to `Allow`.
 export type Method = 'GET' | 'POST';
-export type Route<H> = { method: Method; pattern: string; handler: H };
+export type Route<H> = { method: Method; pattern: string; handler: H; enabled?: () => boolean };
+const isOff = <H>(route: Route<H>) => route.enabled !== undefined && !route.enabled();
 export type Match<H> = { handler: H; params: Record<string, string> };
 function matchPattern(pattern: string, segments: string[]) {
   const parts = pattern.split('/');
@@ -20,7 +22,7 @@ function matchPattern(pattern: string, segments: string[]) {
 export function match<H>(routes: Route<H>[], method: string, segments: string[]): Match<H> | null {
   const wanted = method === 'HEAD' ? 'GET' : method;
   for (const route of routes) {
-    if (route.method !== wanted) continue;
+    if (route.method !== wanted || isOff(route)) continue;
     const params = matchPattern(route.pattern, segments);
     if (params) return { handler: route.handler, params };
   }
@@ -33,7 +35,7 @@ export function match<H>(routes: Route<H>[], method: string, segments: string[])
 export function allowedMethods<H>(routes: Route<H>[], segments: string[]): string[] {
   const methods = new Set<string>();
   for (const route of routes) {
-    if (!matchPattern(route.pattern, segments)) continue;
+    if (isOff(route) || !matchPattern(route.pattern, segments)) continue;
     methods.add(route.method);
     if (route.method === 'GET') methods.add('HEAD');
   }

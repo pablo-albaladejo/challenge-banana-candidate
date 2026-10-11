@@ -28,7 +28,7 @@ Next.js App Router root for the Banana Bank demo. Holds the root layout, the sin
 
 - Next.js here is a newer version than most training data (16.3.x). Read the route-handler / app-router guides in `node_modules/next/dist/docs/` before changing conventions. Route `params` is a `Promise` (awaited in `route.ts`).
 - `page.tsx` structure (state and handlers in `Home`, markup in `_ui/`):
-  - Persona: on mount calls `people` then `session`; falls back to `selectPerson('lucia')`. `selectPerson` POSTs `session {userId}`, resets all state, then loads `dashboard` and (customers only) `conversations`. A `generation` ref discards stale async results after a persona switch; keep that guard on any new async handler. Every async handler is a named `Home` function (`refresh`, `selectPerson`, `openConversation`, `newConversation`, `send`, `openLibrary`, `submitTransfer`, `confirm`, `openCase`, `updateIndex`, `search`, `openDocument`); panels only call the callbacks they receive.
+  - Persona: on mount calls `people`, then `session`; falls back to `selectPerson('lucia')`. If `people` answers 401 or 404 (the server's `DEMO_PERSONA_SWITCHER` is off, so `people` is an absent route: 401 without a session, 404 with a stale one), `switcherOff` is set, no session is requested, the Topbar shows "Persona switching is off" instead of the picker and the main area shows "Choosing a person is turned off on this production server. Run `npm run dev` to try the demo." (`role=status`) instead of the spinner. Any other `people` failure goes to the error banner (`api()` errors carry `status`). `selectPerson` POSTs `session {userId}`, resets all state, then loads `dashboard` and (customers only) `conversations`. A `generation` ref discards stale async results after a persona switch; keep that guard on any new async handler. Every async handler is a named `Home` function (`refresh`, `selectPerson`, `openConversation`, `newConversation`, `send`, `openLibrary`, `submitTransfer`, `confirm`, `openCase`, `updateIndex`, `search`, `openDocument`); panels only call the callbacks they receive.
   - Customer tabs (`nav`): Overview (account cards, last 7 movements, shortcuts), Assistant (conversation list/picker, message bubbles with `**bold**` parsing, suggestion chips, composer, `busy` thinking indicator), Transfers (from/recipient/amount/description form -> `POST actions` with `transfer_money`), Documents.
   - Proposals: if `dashboard.approvals` is non-empty, a "Proposals awaiting confirmation" panel renders on any tab with a button calling `POST approvals/{id}/confirm`. `submitTransfer` also handles a `requires_confirmation` status via a notice. On `requires_review` (a matching transfer is still being verified with the bank) the notice carries a "Send anyway" button that resubmits the same arguments with the held `intentId` and `overridePendingIntentId`; on a held confirmation it re-confirms the same approval with `overridePendingIntentId`.
   - Pending transfers: if `dashboard.pendingTransfers` is non-empty, a "Recent transfer checks" panel (`role=status`, `aria-live=polite`) renders next to the proposals: `unknown`/`processing` -> "Checking with the bank", `completed` -> "Completed", `failed` -> "Not executed". The dashboard reconciles them on every load.
@@ -40,7 +40,7 @@ Next.js App Router root for the Banana Bank demo. Holds the root layout, the sin
 ### Testing Requirements
 
 - `npm run typecheck` (`next typegen && tsc --noEmit`) and `npm run build` (`next build --webpack`) must pass.
-- `npm test` runs colocated `*.test.ts` (see `TESTING.md`): `api/[...path]/route.test.ts` and the unit `_ui/lib/format.test.ts`. Components have no unit tests; `page.e2e.ts` (13 journeys, `npm run test:e2e`) covers them, including a forced generation-guard race on persona switch.
+- `npm test` runs colocated `*.test.ts` (see `TESTING.md`): `api/[...path]/route.test.ts` and the units `_ui/lib/format.test.ts` and `_ui/lib/api.test.ts`. Components have no unit tests; `page.e2e.ts` (16 journeys, `npm run test:e2e`) covers them, including a forced generation-guard race on persona switch and the page with the persona switcher off (`people` and `session` intercepted with the server's 401, `people` with its 404, and a 500 that shows the error banner).
 - Manual: `npm run dev`, open http://127.0.0.1:3000, switch persona, send a chat message, submit a transfer, confirm a proposal, and (as Marta/Pablo) open a case and run "Update index". Chat and search need `OPENAI_API_KEY` (otherwise API returns 503 `missing_openai_api_key`).
 
 ### Common Patterns
@@ -53,7 +53,7 @@ Next.js App Router root for the Banana Bank demo. Holds the root layout, the sin
 
 - `page.tsx` `confirm()` / approvals panel: UI trusts `a.payload` from the server and offers no re-validation or expiry display.
 - `catch {}` in `send()` silently swallows refresh failures.
-- Persona switching is unauthenticated by design: any visitor can become any person (including operators) via `session`.
+- Persona switching is unauthenticated by design: any visitor can become any person (including operators) via `session`. Production turns it off (`DEMO_PERSONA_SWITCHER`, P0-7).
 - `selectedCase.history`, `events`, `bank` render fields the backend `getCaseDetail` (support) currently returns empty/null, so the operator detail view is mostly blank.
 
 ## Dependencies

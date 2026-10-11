@@ -1,6 +1,9 @@
 /** Server data as the UI receives it; shapes are not shared with the client beyond `Person`. */
 export type AnyRecord = Record<string, any>;
-/** Calls `/api/{path}`: GET without a body, POST with JSON; throws the server's `error`. */
+/**
+ * Calls `/api/{path}`: GET without a body, POST with JSON; throws the server's `error` as an Error
+ * carrying the response `status`.
+ */
 export async function api(path: string, body?: unknown) {
   const response = await fetch(`/api/${path}`, {
     method: body === undefined ? 'GET' : 'POST',
@@ -9,6 +12,9 @@ export async function api(path: string, body?: unknown) {
     cache: 'no-store',
   });
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'The request could not be completed.');
+  if (!response.ok)
+    throw Object.assign(new Error(result.error || 'The request could not be completed.'), {
+      status: response.status,
+    });
   return result;
 }

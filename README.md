@@ -48,7 +48,7 @@ If a service cannot start, or the model connection fails, report the command, er
 
 ## Explore
 
-Switch between eight fictional customers and two operators using the selector. Lucía has two accounts, Bruno can receive a transfer and see it in his activity, and Diego has a small balance. Marta and Pablo handle support cases. The selector is a test convenience, not production authentication. Customer data and conversations remain separated by the selected context.
+Switch between eight fictional customers and two operators using the selector. Lucía has two accounts, Bruno can receive a transfer and see it in his activity, and Diego has a small balance. Marta and Pablo handle support cases. The selector is a test convenience, not production authentication: it is on in development (`npm run dev`) and off in production mode (`npm start`), see `DEMO_PERSONA_SWITCHER` below. Customer data and conversations remain separated by the selected context.
 
 The seed contains 12 accounts, 47 conversations, and 17 support cases. The bank is authoritative for balances, movements, and operations. A separate application database stores conversations, runs, proposals, support cases, and the document index. Initial conversations are narrative fixtures; new operations traverse the actual application code and simulator.
 
@@ -80,6 +80,8 @@ For production mode, stop development services, run `npm run build`, then run `n
 
 Production mode needs real secrets. The `.env.example` values are public development defaults, and with them `npm start` exits with status 1 before serving anything. Set `SESSION_SECRET`, `BANK_SERVICE_SECRET` and `BANK_ADMIN_SECRET` (in `.env.local` or the environment) to three different random values of at least 32 characters, for example the output of `openssl rand -hex 32` run once per variable. The bank must use the same `BANK_SERVICE_SECRET` as the app: `npm start` passes its environment to both, so set it once. `npm run build` does not need them.
 
+Production mode has no persona selector. `DEMO_PERSONA_SWITCHER` controls it: unset, it is on outside production and off in production; `1` or `true` turns it on, any other value turns it off. With it off, `GET /api/people` and `POST /api/session` are taken out of the route table, so they answer like any absent route: without a session `401 {"error":"Select a person to continue."}`, as an unknown route does; with one, `404 {"error":"Route not found."}` for `people` and `405` with `Allow: GET, HEAD` for `POST session`, as for any path that only accepts `GET`. The page says "Choosing a person is turned off on this production server. Run `npm run dev` to try the demo." instead of showing the selector. A session cookie issued before the switch keeps working against the API (API only: the page needs `people` and shows the message). Setting it on with `npm start` makes the server refuse to start, because the selector lets anyone become anyone, operators included. There is no login yet, so production mode is for checking the build and the startup checks, not for the demo: use `npm run dev` to review the app.
+
 Additional scenarios and contracts are in [contracts.md](docs/contracts.md). After changing ingestion code, run `npm run ingest`. After a reset, ingest again to restore your modified index. Changing embedding models requires regenerating the index.
 
 ## Project map
@@ -110,6 +112,8 @@ Save the complete challenge conversations from your chosen tools and put the ori
 ## Configuration and troubleshooting
 
 `Refusing to start in production: Set … to random values …` (or `… Give … different values …`) means production mode (`npm start` or `next start`) found one of `SESSION_SECRET`, `BANK_SERVICE_SECRET` or `BANK_ADMIN_SECRET` unset, shorter than 32 characters, based on a development default (case and `-`, `_`, `.`, space ignored), or equal to another of the three. The line names the variables, never their values. Set each listed variable to its own random value, for example `openssl rand -hex 32`, and start again. Development mode (`npm run dev`) keeps the defaults.
+
+`Refusing to start in production: Turn DEMO_PERSONA_SWITCHER off …` means production mode found `DEMO_PERSONA_SWITCHER` set to `1` or `true`. Unset it (or set it to `0`) and start again. When secrets are refused too, both problems are on the same line, secrets first. It also appears with `DEMO_PERSONA_SWITCHER` unset when `NODE_ENV` is set to anything other than `production` (for example `development` exported in your shell) while starting the built server: the build checks as production, but the switcher default follows the runtime `NODE_ENV`, so it turns on. Unset `NODE_ENV` (or set it to `production`) and start again.
 
 Optional settings are in `.env.example`. To move the bank port, update both `BANK_PORT` and `BANK_URL`. `DATA_DIR` and `BANK_DATA_DIR` can separate storage; both default to `.data/`. For separate startup, use `npm run bank` in one terminal and `npx next dev --webpack --hostname 127.0.0.1 --port 3000` in another; both must share `BANK_SERVICE_SECRET`.
 

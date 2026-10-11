@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, it, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { faker } from '@faker-js/faker';
-import { config, localDefaultSecrets } from './src/platform/config';
+import { config, featureFlags, localDefaultSecrets } from './src/platform/config';
 import { register } from './instrumentation';
 
 // Under tsx the hook reads NODE_ENV and NEXT_RUNTIME from process.env when it runs, so each case sets
@@ -23,6 +23,7 @@ describe('register', () => {
     adminSecret: config.adminSecret,
     sessionSecret: config.sessionSecret,
   };
+  const savedSwitcher = featureFlags.demoPersonaSwitcher;
   beforeEach(() => {
     env.NEXT_RUNTIME = 'nodejs';
     Object.assign(config, localDefaultSecrets);
@@ -33,6 +34,7 @@ describe('register', () => {
       else env[key] = value;
     }
     Object.assign(config, savedSecrets);
+    featureFlags.demoPersonaSwitcher = savedSwitcher;
   });
 
   it('should exit with status 1 in production with the local default secrets', async (t) => {
@@ -80,6 +82,57 @@ describe('register', () => {
       adminSecret: strongSecret(),
       sessionSecret: strongSecret(),
     });
+    featureFlags.demoPersonaSwitcher = false;
+    const { exit, error } = watchStartup(t);
+    // Act
+    await register();
+    // Assert
+    assert.equal(exit.mock.callCount() + error.mock.callCount(), 0);
+  });
+  it('should exit with status 1 and name the variable in production with the persona switcher on', async (t) => {
+    // Arrange
+    env.NODE_ENV = 'production';
+    Object.assign(config, {
+      serviceSecret: strongSecret(),
+      adminSecret: strongSecret(),
+      sessionSecret: strongSecret(),
+    });
+    featureFlags.demoPersonaSwitcher = true;
+    const { exit, error } = watchStartup(t);
+    // Act
+    await register();
+    // Assert
+    assert.deepEqual(
+      exit.mock.calls.map((call) => call.arguments),
+      [[1]],
+    );
+    assert.equal(error.mock.callCount(), 1);
+    assert.match(
+      error.mock.calls[0].arguments[0] as string,
+      /^Refusing to start in production: [^\n]*DEMO_PERSONA_SWITCHER[^\n]*$/,
+    );
+  });
+  it('should report the weak secrets and the persona switcher together on one line', async (t) => {
+    // Arrange
+    env.NODE_ENV = 'production';
+    featureFlags.demoPersonaSwitcher = true;
+    const { exit, error } = watchStartup(t);
+    // Act
+    await register();
+    // Assert
+    assert.deepEqual(
+      exit.mock.calls.map((call) => call.arguments),
+      [[1]],
+    );
+    assert.equal(error.mock.callCount(), 1);
+    const [line] = error.mock.calls[0].arguments as string[];
+    assert.match(line, /^Refusing to start in production: Set [^\n]*DEMO_PERSONA_SWITCHER[^\n]*$/);
+    for (const name of secretNames) assert.match(line, new RegExp(name));
+  });
+  it('should start outside production with the persona switcher on', async (t) => {
+    // Arrange
+    env.NODE_ENV = 'development';
+    featureFlags.demoPersonaSwitcher = true;
     const { exit, error } = watchStartup(t);
     // Act
     await register();

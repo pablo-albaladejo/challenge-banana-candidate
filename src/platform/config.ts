@@ -65,4 +65,32 @@ export function assertProductionSecrets(config: Config, nodeEnv: string | undefi
   ].filter(Boolean);
   if (problems.length) throw new Error(problems.join(' '));
 }
+/**
+ * Pure: the feature flags, kept out of `config` because its key list is frozen
+ * (`src/public-surface.test.ts`). `DEMO_PERSONA_SWITCHER` (P0-7): unset or empty, the switcher is
+ * on outside production and off in production; `1` or `true` (any case, trimmed) turn it on and
+ * any other value turns it off, so a typo fails closed.
+ */
+export function loadFeatureFlags(env: Env) {
+  const value = env.DEMO_PERSONA_SWITCHER?.trim().toLowerCase();
+  return {
+    demoPersonaSwitcher: value ? value === '1' || value === 'true' : env.NODE_ENV !== 'production',
+  };
+}
+export type FeatureFlags = ReturnType<typeof loadFeatureFlags>;
+/** Mutable on purpose, like `config`: read `featureFlags.x` at call time; tests flip it. */
+export const featureFlags = loadFeatureFlags(process.env);
+/**
+ * Pure: in production the demo persona switcher (`GET people`, `POST session`: anyone can become
+ * anyone, operators included) must be off. The error names the variable, never its value.
+ */
+export function assertNoPersonaSwitcherInProduction(
+  flags: FeatureFlags,
+  nodeEnv: string | undefined,
+) {
+  if (nodeEnv === 'production' && flags.demoPersonaSwitcher)
+    throw new Error(
+      'Turn DEMO_PERSONA_SWITCHER off (unset it or set it to 0): the demo persona switcher lets anyone become any person, operators included.',
+    );
+}
 export { referenceDate } from '../shared/domain/reference-date';
