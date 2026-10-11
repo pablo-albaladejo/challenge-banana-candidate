@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-10-09 | Updated: 2026-10-10 -->
+<!-- Generated: 2026-10-09 | Updated: 2026-10-11 -->
 
 # app
 
@@ -30,7 +30,7 @@ Next.js App Router root for the Banana Bank demo. Holds the root layout, the sin
 - `page.tsx` structure (state and handlers in `Home`, markup in `_ui/`):
   - Persona: on mount calls `people`, then `session`; falls back to `selectPerson('lucia')`. If `people` answers 401 or 404 (the server's `DEMO_PERSONA_SWITCHER` is off, so `people` is an absent route: 401 without a session, 404 with a stale one), `switcherOff` is set, no session is requested, the Topbar shows "Persona switching is off" instead of the picker and the main area shows "Choosing a person is turned off on this production server. Run `npm run dev` to try the demo." (`role=status`) instead of the spinner. Any other `people` failure goes to the error banner (`api()` errors carry `status`). `selectPerson` POSTs `session {userId}`, resets all state, then loads `dashboard` and (customers only) `conversations`. A `generation` ref discards stale async results after a persona switch; keep that guard on any new async handler. Every async handler is a named `Home` function (`refresh`, `selectPerson`, `openConversation`, `newConversation`, `send`, `openLibrary`, `submitTransfer`, `confirm`, `openCase`, `updateIndex`, `search`, `openDocument`); panels only call the callbacks they receive.
   - Customer tabs (`nav`): Overview (account cards, last 7 movements, shortcuts), Assistant (conversation list/picker, message bubbles with `**bold**` parsing, suggestion chips, composer, `busy` thinking indicator), Transfers (from/recipient/amount/description form -> `POST actions` with `transfer_money`), Documents.
-  - Proposals: if `dashboard.approvals` is non-empty, a "Proposals awaiting confirmation" panel renders on any tab with a button calling `POST approvals/{id}/confirm`. `submitTransfer` also handles a `requires_confirmation` status via a notice. On `requires_review` (a matching transfer is still being verified with the bank) the notice carries a "Send anyway" button that resubmits the same arguments with the held `intentId` and `overridePendingIntentId`; on a held confirmation it re-confirms the same approval with `overridePendingIntentId`.
+  - Proposals: if `dashboard.approvals` is non-empty, a "Proposals awaiting confirmation" panel renders on any tab with a button calling `POST approvals/{id}/confirm`. Each card names the source and destination from the server-built `parties` (label, holder, masked IBAN; "another person" for a contact, "account not found" for an account the bank does not list), never the raw account ids, and shows the expiry (readiness P0-6). `submitTransfer` also handles a `requires_confirmation` status via a notice. On `requires_review` (a matching transfer is still being verified with the bank) the notice carries a "Send anyway" button that resubmits the same arguments with the held `intentId` and `overridePendingIntentId`; on a held confirmation it re-confirms the same approval with `overridePendingIntentId`.
   - Pending transfers: if `dashboard.pendingTransfers` is non-empty, a "Recent transfer checks" panel (`role=status`, `aria-live=polite`) renders next to the proposals: `unknown`/`processing` -> "Checking with the bank", `completed` -> "Completed", `failed` -> "Not executed". The dashboard reconciles them on every load.
   - Operator tabs: Cases (inbox from `dashboard.incidents`, detail via `GET incidents/{id}` showing latest message, history, agent events, bank operations, `gaps`) and Documents (adds an "Update index" button -> `POST ingestion`).
   - Documents tab (both roles): `POST search` for retrieved excerpts with similarity scores, `GET documents` list, `GET documents/{id}` reader (`<pre>` text).
@@ -40,7 +40,7 @@ Next.js App Router root for the Banana Bank demo. Holds the root layout, the sin
 ### Testing Requirements
 
 - `npm run typecheck` (`next typegen && tsc --noEmit`) and `npm run build` (`next build --webpack`) must pass.
-- `npm test` runs colocated `*.test.ts` (see `TESTING.md`): `api/[...path]/route.test.ts` and the units `_ui/lib/format.test.ts` and `_ui/lib/api.test.ts`. Components have no unit tests; `page.e2e.ts` (16 journeys, `npm run test:e2e`) covers them, including a forced generation-guard race on persona switch and the page with the persona switcher off (`people` and `session` intercepted with the server's 401, `people` with its 404, and a 500 that shows the error banner).
+- `npm test` runs colocated `*.test.ts` (see `TESTING.md`): `api/[...path]/route.test.ts` and the units `_ui/lib/format.test.ts`, `_ui/lib/parties.test.ts` and `_ui/lib/api.test.ts`. Components have no unit tests; `page.e2e.ts` (17 journeys, `npm run test:e2e`) covers them, including the proposal card naming both parties with no raw account id, the recent transfer checks panel naming a rejected transfer's recipient, a forced generation-guard race on persona switch and the page with the persona switcher off (`people` and `session` intercepted with the server's 401, `people` with its 404, and a 500 that shows the error banner).
 - Manual: `npm run dev`, open http://127.0.0.1:3000, switch persona, send a chat message, submit a transfer, confirm a proposal, and (as Marta/Pablo) open a case and run "Update index". Chat and search need `OPENAI_API_KEY` (otherwise API returns 503 `missing_openai_api_key`).
 
 ### Common Patterns
@@ -51,7 +51,7 @@ Next.js App Router root for the Banana Bank demo. Holds the root layout, the sin
 
 ### Things worth scrutinizing
 
-- `page.tsx` `confirm()` / approvals panel: UI trusts `a.payload` from the server and offers no re-validation or expiry display.
+- `page.tsx` `confirm()` / approvals panel: the card shows the server's `parties` and the expiry, but `confirm()` still has no busy guard (a double click answers 409; the atomic consume keeps the server safe) and the card does not name the originating conversation.
 - `catch {}` in `send()` silently swallows refresh failures.
 - Persona switching is unauthenticated by design: any visitor can become any person (including operators) via `session`. Production turns it off (`DEMO_PERSONA_SWITCHER`, P0-7).
 - `selectedCase.history`, `events`, `bank` render fields the backend `getCaseDetail` (support) currently returns empty/null, so the operator detail view is mostly blank.

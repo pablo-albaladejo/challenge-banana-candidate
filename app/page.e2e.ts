@@ -43,6 +43,26 @@ describe('Transfers', () => {
     expect(booked).toHaveLength(1);
     expect(booked[0].amountCents).toBe(1234);
   });
+  it('should name the source account and the recipient on the proposal card instead of their account ids', async ({
+    page,
+  }) => {
+    // Arrange
+    const concept = `E2E named card ${Date.now()}`;
+    await openAs(page, 'Lucía Martín');
+    await page.getByRole('navigation').getByRole('button', { name: 'Transfers' }).click();
+    await page.getByLabel('Recipient').selectOption({ value: accounts.bruno });
+    await page.getByLabel('Amount in euros').fill('5');
+    await page.getByPlaceholder('What is this transfer for?').fill(concept);
+    // Act
+    await page.getByRole('button', { name: 'Send transfer' }).click();
+    // Assert
+    const card = page.locator('.approvals > div').filter({ hasText: concept });
+    await expect(card).toContainText('From Aurora account');
+    await expect(card).toContainText('To Bruno Vidal ·');
+    await expect(card).toContainText('another person');
+    await expect(card).toContainText(/Valid until \d{2}:\d{2}/);
+    await expect(card).not.toContainText('acc-');
+  });
 });
 describe('Assistant', () => {
   beforeEach(() => resetBank());
@@ -257,9 +277,10 @@ describe('Rejected transfer', () => {
     await expect(notice).toContainText('Insufficient funds');
     await notice.getByRole('button', { name: 'Dismiss notice' }).click();
     await expect(notice).toHaveCount(0);
-    await expect(
-      page.getByRole('status').filter({ hasText: 'Recent transfer checks' }),
-    ).toContainText('Not executed');
+    const checks = page.getByRole('status').filter({ hasText: 'Recent transfer checks' });
+    await expect(checks).toContainText('Not executed');
+    await expect(checks).toContainText('To Lucía Martín ·');
+    await expect(checks).not.toContainText('acc-');
     expect((await bankSnapshot()).operations.filter((o) => o.concept === concept)).toHaveLength(0);
   });
 });

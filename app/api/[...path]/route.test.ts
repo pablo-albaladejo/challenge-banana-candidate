@@ -621,9 +621,15 @@ describe('GET /api/dashboard', () => {
     }
     // Assert
     assert.equal(result.status, 200);
-    assert.deepEqual(result.body.pendingTransfers, [
-      { id: intent.id, status: 'unknown', payload: intent.payload, createdAt: intent.createdAt },
-    ]);
+    assert.deepEqual(
+      result.body.pendingTransfers.map((p: any) => ({
+        id: p.id,
+        status: p.status,
+        payload: p.payload,
+        createdAt: p.createdAt,
+      })),
+      [{ id: intent.id, status: 'unknown', payload: intent.payload, createdAt: intent.createdAt }],
+    );
   });
 
   it('should show a recent failed transfer as completed once the bank has its operation', async () => {
@@ -1168,6 +1174,26 @@ describe('POST /api/actions', () => {
       dashboard.body.approvals.map((a: any) => [a.id, a.checks]),
       [[result.body.approval.id, result.body.checks]],
     );
+  });
+
+  it('should name both parties of a proposal on the dashboard instead of their account ids', async () => {
+    // Arrange
+    const input = transferInputFactory.build();
+    // Act
+    await api('POST', 'actions', {
+      as: customers.lucia,
+      body: { name: 'transfer_money', arguments: input },
+    });
+    // Assert
+    const dashboard = await api('GET', 'dashboard', { as: customers.lucia });
+    const source = dashboard.body.accounts.find((a: any) => a.id === input.fromAccountId);
+    const recipient = dashboard.body.contacts.find((c: any) => c.id === input.toAccountId);
+    const { parties } = dashboard.body.approvals[0];
+    assert.deepEqual(
+      [parties.from.label, parties.from.own, parties.to.holder, parties.to.label, parties.to.own],
+      [source.label, true, recipient.name, recipient.label, false],
+    );
+    assert.doesNotMatch(JSON.stringify(parties), /acc-/);
   });
 
   it('should keep a single proposal when the same intent is proposed again', async () => {
