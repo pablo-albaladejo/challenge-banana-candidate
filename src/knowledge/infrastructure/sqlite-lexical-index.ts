@@ -3,6 +3,8 @@
 // filled lazily, and rebuilt whenever it no longer mirrors `chunks` (after an ingest or a seed),
 // so it needs no migration and ingestion does not know it exists.
 import { appDb } from '../../platform/db/db';
+import { lexicalQuery } from '../domain/lexical-query';
+import type { LexicalIndex } from '../application/ports/lexical-index';
 import type { SearchResult } from '../../types';
 
 type Db = ReturnType<typeof appDb>;
@@ -40,17 +42,8 @@ function ensureLexicalIndex(db: Db) {
 }
 
 /**
- * The words of a query as an FTS5 expression: each one quoted (so no character of the query is
- * read as FTS syntax) and OR-ed, leaving the ranking to BM25. `undefined` when there is no word.
- */
-export function lexicalQuery(query: string): string | undefined {
-  const words = [...new Set(query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [])];
-  return words.length ? words.map((w) => `"${w}"`).join(' OR ') : undefined;
-}
-
-/**
  * Every chunk matching any word of the query, best BM25 match first, with `score` = -bm25 (higher
- * is better) and no vector. Visibility and validity filters are the caller's (search.ts).
+ * is better) and no vector. Visibility and validity filters are the caller's (the SearchDocuments use case).
  */
 export function lexicalSearch(query: string): SearchResult[] {
   const match = lexicalQuery(query);
@@ -76,3 +69,5 @@ export function lexicalSearch(query: string): SearchResult[] {
     score: r.score,
   }));
 }
+/** The `LexicalIndex` port over the lazily built `chunks_fts`. */
+export const sqliteLexicalIndex: LexicalIndex = { search: lexicalSearch };

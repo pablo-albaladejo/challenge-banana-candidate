@@ -1,4 +1,4 @@
-import { embedTexts } from '../src/knowledge/search/embeddings';
+import { embedTexts } from '../src/knowledge/infrastructure/cached-openai-embedder';
 import { activeProvider, createResponse } from '../src/platform/model/gateway';
 import { config } from '../src/platform/config';
 try {

@@ -1,7 +1,7 @@
 import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { lexicalQuery, lexicalSearch } from './lexical';
-import { replaceChunks } from './store';
+import { lexicalSearch } from './sqlite-lexical-index';
+import { replaceChunks } from './sqlite-chunk-store';
 import { seedApp } from '../../server/seed';
 import { chunkFactory } from '../../../tests/fixtures/factories';
 
@@ -10,26 +10,6 @@ const index = (...texts: string[]) => {
   replaceChunks(chunks, { model: 'test-model', dimensions: 2 });
   return chunks;
 };
-
-describe('lexicalQuery', () => {
-  it('should quote each distinct word and OR them so no query character is FTS syntax', () => {
-    // Arrange
-    const query = 'Fees? fees, "NEAR" AND* (card)';
-    // Act
-    const expression = lexicalQuery(query);
-    // Assert
-    assert.equal(expression, '"fees" OR "near" OR "and" OR "card"');
-  });
-
-  it('should return no expression for a query without words', () => {
-    // Arrange
-    const query = '?! -- **';
-    // Act
-    const expression = lexicalQuery(query);
-    // Assert
-    assert.equal(expression, undefined);
-  });
-});
 
 describe('lexicalSearch', () => {
   beforeEach(() => seedApp());

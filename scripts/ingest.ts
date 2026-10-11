@@ -1,4 +1,4 @@
-import { ingest, saveInitialIndex } from '../src/knowledge/ingestion/pipeline';
+import { ingest, saveInitialIndex } from '../src/knowledge';
 try {
   console.log(await ingest(console.log));
   if (process.argv.includes('--export')) {

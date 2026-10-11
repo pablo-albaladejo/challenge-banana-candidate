@@ -20,6 +20,10 @@ const rank = {
   assistant: 4,
 };
 const up = (depth) => '\\.\\./'.repeat(depth);
+/** Verticals already split into layers (7b, 7c, 7d.1): index-only from outside, seed excepted. */
+const layered = ['transfers', 'assistant', 'knowledge'];
+/** The layered verticals whose infrastructure/ the seed may import (`insertIntent`). */
+const seedInfrastructure = ['transfers'];
 const frozenShims = (depth) => ({
   regex: `^${up(depth)}((config|db|seed|auth|people)(\\.ts)?|(agent|banking|ingestion|retrieval)(/.*)?)$`,
   message: 'Frozen shims are for external callers only; import the module from its new path.',
@@ -139,12 +143,17 @@ const layers = {
       message: 'Only dependencies.ts and legacy.ts touch infrastructure/.',
     },
   ],
-  // Until the flat layout is gone (7d), the index may still re-export today's flat files, but
-  // never the new layer folders: it re-exports entry-points only.
+  // Until the flat layout is gone (7d), the index of a flat vertical may still re-export today's
+  // flat files, but never the new layer folders; a layered vertical's index re-exports only
+  // ./entry-points/ (the final 7d rule).
   index: (v) => [
     {
-      regex: '^\\./(domain|application|infrastructure)(/|$)',
-      message: 'index.ts re-exports only ./entry-points/.',
+      regex: layered.includes(v)
+        ? '^\\./(?!entry-points/)'
+        : '^\\./(domain|application|infrastructure)(/|$)',
+      // Types are erased, so `export type { X } from './domain/x'` may publish a public type.
+      allowTypeImports: true,
+      message: 'index.ts re-exports only ./entry-points/ (types excepted).',
     },
     ...rankEntries(v, 1),
     ...feature(1, false),
@@ -171,6 +180,24 @@ const layers = {
   ],
   // The composition root may deep-import feature internals (their http/ handlers).
   server: (depth) => [frozenShims(depth), alias],
+  // ...but a layered vertical only through its index.ts; seed.ts, a fixture loader, may also
+  // reach its infrastructure/ (plan §10.10, C3) and nothing else deep.
+  composition: (depth, seed) => [
+    ...layers.server(depth),
+    {
+      regex: `^${up(depth)}(${layered.filter((v) => !seed || !seedInfrastructure.includes(v)).join('|')})/(?!index(\\.ts)?$).+`,
+      message: "Import a layered vertical only through its index.ts ('../<vertical>').",
+    },
+    ...(seed
+      ? [
+          {
+            regex: `^${up(depth)}(${seedInfrastructure.join('|')})/(?!index(\\.ts)?$|infrastructure/).+`,
+            message:
+              'seed.ts reaches a layered vertical only through its index.ts or its infrastructure/.',
+          },
+        ]
+      : []),
+  ],
 };
 // Up to six folders below src/ (today's deepest file is two below), so no source file escapes.
 const depths = [1, 2, 3, 4, 5, 6];
@@ -229,7 +256,12 @@ const boundaries = [
     restrict([at('src/shared/', d, 1)], layers.shared(d), { paths: cryptoPaths }),
   ),
   ...depths.map((d) => restrict([at('src/platform/', d, 1)], layers.platform(d))),
-  ...depths.map((d) => restrict([at('src/server/', d, 1)], layers.server(d))),
+  ...depths.map((d) =>
+    restrict([at('src/server/', d, 1)], layers.composition(d, false), {
+      ignores: ['src/server/seed.ts'],
+    }),
+  ),
+  restrict(['src/server/seed.ts'], layers.composition(1, true)),
   // Tests: only the cross-vertical index rule, the shim rule and the alias rule (no layer rules,
   // so a use-case test may import its vertical's wiring and tests/support/*).
   ...depths.flatMap((d) => [

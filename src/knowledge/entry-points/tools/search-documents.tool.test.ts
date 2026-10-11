@@ -1,12 +1,12 @@
 import { after, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { runTool } from '../../assistant';
-import { seedApp } from '../../server/seed';
-import { resetBank, startBank, stopBank } from '../../../tests/support/bank';
-import { toolContextFactory } from '../../../tests/fixtures/factories';
-import { allChunks } from '../search/store';
-import { conversations } from '../../../tests/fixtures/world';
-import type { ToolContext } from '../../types';
+import { runTool } from '../../../assistant';
+import { seedApp } from '../../../server/seed';
+import { resetBank, startBank, stopBank } from '../../../../tests/support/bank';
+import { toolContextFactory } from '../../../../tests/fixtures/factories';
+import { allChunks } from '../../infrastructure/sqlite-chunk-store';
+import { conversations } from '../../../../tests/fixtures/world';
+import type { ToolContext } from '../../../types';
 
 /** A run in lucia's welcome conversation, where a support case can be opened. */
 const context = (overrides: Partial<ToolContext> = {}) =>

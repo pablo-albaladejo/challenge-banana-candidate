@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { seedApp } from './seed';
 import { appDb } from '../platform/db/db';
-import { allChunks } from '../knowledge/search/store';
+import { allChunks } from '../knowledge/infrastructure/sqlite-chunk-store';
 const count = (sql: string) => (appDb().prepare(sql).get() as { n: number }).n;
 describe('seedApp', () => {
   it('should load the 47 seed conversations, each with messages', () => {

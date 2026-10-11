@@ -1,7 +1,7 @@
 import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { allChunks, exportIndex, replaceChunks, restoreIndex } from './store';
-import { embeddingKey } from './embeddings';
+import { allChunks, exportIndex, replaceChunks, restoreIndex } from './sqlite-chunk-store';
+import { embeddingKey } from './cached-openai-embedder';
 import { seedApp } from '../../server/seed';
 import { appDb } from '../../platform/db/db';
 import { config } from '../../platform/config';

@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto';
 import { appDb } from '../../platform/db/db';
 import { config } from '../../platform/config';
-import { createEmbeddings } from '../../platform/model/gateway';
+import { activeProvider, createEmbeddings, fallbackProvider } from '../../platform/model/gateway';
+import { EMBEDDING_DIMENSIONS } from '../domain/retrieval';
+import type { Embedder } from '../application/ports/embedder';
 // Frozen surface (plan §2): callers still import the client and its error from here.
 export { MissingOpenAIKeyError, openai } from '../../platform/model/gateway';
-export const dimensions = 1536;
+export const dimensions = EMBEDDING_DIMENSIONS;
 export function vectorBuffer(vector: number[]) {
   return Buffer.from(new Float32Array(vector).buffer);
 }
@@ -51,3 +53,9 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
   }
   return result;
 }
+/** The `Embedder` port: claude-cli has no embeddings, and the gateway decides the quota fallback. */
+export const cachedOpenAIEmbedder: Embedder = {
+  available: async () => (await activeProvider()) !== 'claude-cli',
+  embed: embedTexts,
+  fallsBackOn: async (error) => !!(await fallbackProvider(error, 'embeddings')),
+};

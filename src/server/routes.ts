@@ -13,10 +13,8 @@ import {
 } from '../conversations/http/conversations';
 import { confirmApproval } from '../transfers';
 import { incidentDetail, listIncidents } from '../support/http/incidents';
-import { documentChunks, documentDetail, listDocuments } from '../knowledge/http/documents';
 import { postMessage, previewAnswer, runAction } from '../assistant';
-import { search } from '../knowledge/http/search';
-import { runIngestion } from '../knowledge/http/ingestion';
+import { documentChunks, documentDetail, listDocuments, runIngestion, search } from '../knowledge';
 /** Answered before the actor is resolved: no session needed. */
 export const publicRoutes: Route<PublicHandler>[] = [
   { method: 'GET', pattern: 'health', handler: health },

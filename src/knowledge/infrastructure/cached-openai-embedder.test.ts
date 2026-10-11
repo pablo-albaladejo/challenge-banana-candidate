@@ -1,6 +1,12 @@
 import { after, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { dimensions, embeddingKey, embedTexts, readVector, vectorBuffer } from './embeddings';
+import {
+  dimensions,
+  embeddingKey,
+  embedTexts,
+  readVector,
+  vectorBuffer,
+} from './cached-openai-embedder';
 import { appDb } from '../../platform/db/db';
 import { config } from '../../platform/config';
 import { fakeEmbedding, startFakeOpenAI, type FakeOpenAI } from '../../../tests/support/openai';

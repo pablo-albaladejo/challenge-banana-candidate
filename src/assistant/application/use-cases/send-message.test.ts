@@ -6,6 +6,7 @@ import { appDb } from '../../../platform/db/db';
 import { seedApp } from '../../../server/seed';
 import { ConflictError, DomainError } from '../../../shared/domain/errors';
 import { httpStatusOf } from '../../../platform/http/errors';
+import { referenceDate } from '../../../shared/domain/reference-date';
 import { resetBank, startBank, stopBank } from '../../../../tests/support/bank';
 import { eventsFor, latestRun, messagesOf, runOf } from '../../../../tests/support/db';
 import {
@@ -168,6 +169,27 @@ describe('sendMessage', () => {
       .map((line: string) => JSON.parse(line));
     assert.ok(excerpts.length > 0 && excerpts.length <= 5);
     assert.ok(excerpts.every((e: { documentId: string }) => typeof e.documentId === 'string'));
+  });
+  it('should keep internal documentation out of the instructions for a customer message', async () => {
+    // Arrange
+    const internal = appDb()
+      .prepare(
+        "SELECT document_id, text FROM chunks WHERE audience='internal' AND (valid_to IS NULL OR valid_to >= ?) ORDER BY id LIMIT 1",
+      )
+      .get(referenceDate) as { document_id: string; text: string };
+    fake.script(reply('Done.'));
+    // Act
+    await assistant().sendMessage({
+      userId: customers.lucia,
+      conversationId,
+      content: internal.text,
+    });
+    // Assert
+    const call = fake.requests.find((r) => r.path.endsWith('/responses'))!;
+    const documentation = call.body.instructions.split('RETRIEVED DOCUMENTATION:\n')[1];
+    assert.ok(documentation.length > 0);
+    assert.equal(documentation.includes(JSON.stringify(internal.text)), false);
+    assert.equal(documentation.includes(internal.document_id), false);
   });
 
   it('should execute a requested tool and return its output to the model', async () => {

@@ -1,6 +1,6 @@
 import { randomIds, systemClock } from '../../platform/runtime';
 import { NotFoundError } from '../../shared/domain/errors';
-import { searchDocuments } from '../../knowledge';
+import { knowledge } from '../../knowledge';
 import { conversationOf, insertMessage, messagesIn } from '../../conversations';
 import { openaiModel } from '../infrastructure/openai-model.adapter';
 import { staticToolCatalog } from '../infrastructure/static-tool-catalog';
@@ -48,7 +48,10 @@ const conversationLog: ConversationLog = {
 const defaults = (): AssistantDeps => ({
   model: openaiModel,
   catalog,
-  knowledge: { search: (query) => searchDocuments(query) },
+  knowledge: {
+    search: async (query) =>
+      (await knowledge().searchDocuments({ query, role: 'customer' })).sources,
+  },
   conversations: conversationLog,
   runs: sqliteRuns,
   locks: inMemoryConversationLocks(),

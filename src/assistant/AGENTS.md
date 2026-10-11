@@ -57,7 +57,7 @@ Hexagonal vertical (plan §10): `domain/` (pure rules), `application/` (ports, s
 
 ### Internal
 
-- `../shared` (`DomainError`s, `Clock`, `Ids`), `../platform` (adapters and wiring only: `model/gateway`, `telemetry/`, `db/statement`, `config`, `runtime`, `http/`), `../knowledge` (`searchDocuments`, tool), `../conversations` (`conversationOf`, `conversationFor`, `insertMessage`, `messagesIn`, `renameConversation`), `../accounts`, `../transfers`, `../support` (tools), `../types`.
+- `../shared` (`DomainError`s, `Clock`, `Ids`), `../platform` (adapters and wiring only: `model/gateway`, `telemetry/`, `db/statement`, `config`, `runtime`, `http/`), `../knowledge` (`knowledge().searchDocuments({ query, role: 'customer' })`, tool), `../conversations` (`conversationOf`, `conversationFor`, `insertMessage`, `messagesIn`, `renameConversation`), `../accounts`, `../transfers`, `../support` (tools), `../types`.
 
 ### External
 

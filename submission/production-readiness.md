@@ -17,7 +17,7 @@ Legend: **Effort** S (< 1 h), M (half a day). **Testable** means it can be pinne
 - **No XSS sinks.** React escapes every user- or model-authored string; there is no `dangerouslySetInnerHTML` and no markdown links or images, so no stored XSS and no image-based exfiltration.
 - **Secrets stay server-side.** The OpenAI key never reaches the client, `scripts/dev.ts` strips it from the bank's environment, and model calls use `store: false`.
 - **Audience filtering.** Internal procedures are filtered out for customers in `/documents`, `/documents/:id/chunks`, `/search` and the agent's retrieval (whose role defaults to `customer`). The corpus was grepped for injection payloads; none were found.
-- **SQL** is parameterised everywhere; there is no command execution; document path traversal is guarded (`src/ingestion/pipeline.ts`).
+- **SQL** is parameterised everywhere; there is no command execution; document path traversal is guarded (`src/knowledge/infrastructure/fixture-document-catalog.ts`).
 - **Bank request signing.** The HMAC covers method, path and query, actor, timestamp and the exact body, within a 60-second window. A replay is only possible on loopback within 60 s, and replayed transfers return `replay: true` because the reference makes them idempotent. If `BANK_URL` ever points off-host, require `https:`.
 
 ## Root cause shared by most money-path findings

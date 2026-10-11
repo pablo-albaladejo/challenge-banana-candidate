@@ -1,6 +1,7 @@
 import { appDb } from '../../platform/db/db';
 import { config } from '../../platform/config';
-import { vectorBuffer, readVector, embeddingKey } from './embeddings';
+import { vectorBuffer, readVector, embeddingKey } from './cached-openai-embedder';
+import type { ChunkStore } from '../application/ports/chunk-store';
 import type { Chunk } from '../../types';
 export type IndexDump = {
   format: 1;
@@ -98,3 +99,10 @@ export function restoreIndex(index: IndexDump) {
       );
   })();
 }
+/** The `ChunkStore` port over the app DB tables `chunks` and `meta`. */
+export const sqliteChunkStore: ChunkStore = {
+  all: allChunks,
+  indexModel,
+  count: chunkCount,
+  replace: replaceChunks,
+};

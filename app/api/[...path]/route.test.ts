@@ -5,7 +5,7 @@ import { GET, POST } from './route';
 import { seedApp } from '../../../src/server/seed';
 import { appDb } from '../../../src/platform/db/db';
 import { sessionToken } from '../../../src/identity/auth';
-import { documents } from '../../../src/knowledge/ingestion/pipeline';
+import { documents } from '../../../src/knowledge';
 import { assistant } from '../../../src/assistant';
 import { api } from '../../../tests/support/api';
 import {
@@ -138,6 +138,29 @@ describe('POST /api/search', () => {
     const result = await api('POST', 'search', { as: customers.lucia, body: { query } });
     // Assert
     assert.ok(result.body.sources.every((s: any) => !('vector' in s)));
+  });
+
+  it('should answer with the sources and the mode as the only body keys', async () => {
+    // Arrange
+    const query = await chunkText(publicDocumentId());
+    // Act
+    const result = await api('POST', 'search', { as: customers.lucia, body: { query } });
+    // Assert
+    assert.deepEqual(Object.keys(result.body), ['sources', 'mode']);
+  });
+
+  it('should answer a search without an index with the generic service error', async (t) => {
+    // Arrange
+    t.mock.method(console, 'error', () => {});
+    appDb().exec("DELETE FROM meta WHERE key='index-model'");
+    // Act
+    const result = await api('POST', 'search', { as: customers.lucia, body: { query: 'fees' } });
+    // Assert
+    assert.equal(result.status, 500);
+    assert.equal(
+      result.body.error,
+      'The request could not be completed. Check the service and configuration.',
+    );
   });
 
   it('should reject an empty query as invalid request data', async () => {
@@ -1421,6 +1444,15 @@ describe('GET /api/documents', () => {
     assert.ok(result.body.documents.every((d: any) => d.audience === 'public'));
   });
 
+  it('should answer the documents and the index size as the only body keys', async () => {
+    // Arrange
+    // Act
+    const result = await api('GET', 'documents', { as: customers.lucia });
+    // Assert
+    assert.deepEqual(Object.keys(result.body), ['documents', 'index']);
+    assert.deepEqual(Object.keys(result.body.index), ['chunks']);
+  });
+
   it('should list all 80 documents to an operator', async () => {
     // Arrange
     // Act
@@ -1569,6 +1601,29 @@ describe('POST /api/preview-answer', () => {
 });
 
 describe('POST /api/ingestion', () => {
+  let fake: FakeOpenAI;
+  before(async () => {
+    fake = await startFakeOpenAI();
+  });
+  after(async () => {
+    await fake.close();
+    seedApp();
+  });
+
+  it('should rebuild the index for an operator and answer with the ingestion summary', async () => {
+    // Arrange
+    seedApp();
+    appDb().exec('DELETE FROM embedding_cache');
+    // Act
+    const result = await api('POST', 'ingestion', { as: operators.marta });
+    // Assert
+    assert.equal(result.status, 200);
+    assert.deepEqual(Object.keys(result.body), ['documents', 'chunks', 'model', 'dimensions']);
+    assert.equal(result.body.documents, counts.documents);
+    assert.equal(result.body.dimensions, 1536);
+    assert.ok(fake.requests.some((r) => r.path.endsWith('/embeddings')));
+  });
+
   it('should reject a customer', async () => {
     // Arrange
     // Act

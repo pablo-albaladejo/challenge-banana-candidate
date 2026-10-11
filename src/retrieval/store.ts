@@ -1,2 +1,11 @@
-// Frozen path (src/public-surface.test.ts): the module now lives in src/knowledge/search/store.ts.
-export * from '../knowledge/search/store';
+// Frozen path (src/public-surface.test.ts): the module now lives in
+// src/knowledge/infrastructure/sqlite-chunk-store.ts.
+export {
+  type IndexDump,
+  replaceChunks,
+  allChunks,
+  indexModel,
+  chunkCount,
+  exportIndex,
+  restoreIndex,
+} from '../knowledge/infrastructure/sqlite-chunk-store';
