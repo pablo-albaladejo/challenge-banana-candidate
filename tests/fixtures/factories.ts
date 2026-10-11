@@ -26,6 +26,7 @@ import type {
   WindowOperation,
 } from '../../src/support/domain/case-evidence';
 import type { Claim, VerifiedFact } from '../../src/support/domain/claims';
+import type { ExtractedClaimRow } from '../../src/support/domain/anchoring';
 import {
   accounts,
   cases,
@@ -349,3 +350,17 @@ export const policyClaimFactory = new Factory<ClaimOf<'policy_amount'>>()
   .attrs({ ...claimBase, kind: 'policy_amount', policy: 'monthly_fee' })
   .attr('product', 'aurora')
   .attr('amountCents', 600);
+
+/**
+ * A row as the model extractor returns it (`case_claims`), before anchoring. By default the
+ * failure lucia was told about, quoted from her seeded assistant message.
+ */
+export const extractedClaimRowFactory = new Factory<ExtractedClaimRow>()
+  .attr('messageId', 'message-lucia-2')
+  .attr('quote', 'I could not complete the transfer.')
+  .attr('kind', 'operation_status')
+  .attr('amountCents', null)
+  .attr('reference', null)
+  .attr('status', 'not_completed')
+  .attr('policy', null)
+  .attr('product', null);

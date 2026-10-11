@@ -8,6 +8,7 @@ import { telemetryEventReader } from '../infrastructure/telemetry-event-reader';
 import { httpOperatorBank } from '../infrastructure/http-operator-bank.adapter';
 import { telemetryCaseEvents } from '../infrastructure/telemetry-case-events';
 import { sqliteUnitOfWork } from '../infrastructure/sqlite-unit-of-work';
+import { openaiCaseBriefModel } from '../infrastructure/openai-case-brief.adapter';
 import { makeListIncidents } from '../application/use-cases/list-incidents';
 import { makeGetOperatorWorkspace } from '../application/use-cases/get-operator-workspace';
 import { makeGetCaseDetail } from '../application/use-cases/get-case-detail';
@@ -27,6 +28,7 @@ import type { ProcedureCatalog } from '../application/ports/procedure-catalog';
 import type { CaseEvents } from '../application/ports/case-events';
 import type { CaseReplies } from '../application/ports/case-replies';
 import type { UnitOfWork } from '../../shared/ports/unit-of-work';
+import type { CaseBriefModel } from '../application/ports/case-brief-model';
 export type SupportDeps = {
   incidents: IncidentRepository;
   people: People;
@@ -38,6 +40,7 @@ export type SupportDeps = {
   caseEvents: CaseEvents;
   replies: CaseReplies;
   unitOfWork: UnitOfWork;
+  briefModel: CaseBriefModel;
   clock: Clock;
   ids: Ids;
 };
@@ -72,6 +75,7 @@ const defaults = (): SupportDeps => ({
   caseEvents: telemetryCaseEvents,
   replies: { append: (reply) => conversations().appendMessage(reply) },
   unitOfWork: sqliteUnitOfWork,
+  briefModel: openaiCaseBriefModel,
   clock: systemClock,
   ids: randomIds,
 });

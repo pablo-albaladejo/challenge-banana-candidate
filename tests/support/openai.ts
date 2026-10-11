@@ -7,10 +7,13 @@ type OutputItem = Record<string, unknown>;
 /**
  * A model turn, or an API error (with an optional OpenAI `code`, e.g. `insufficient_quota`). A
  * coded error carries `x-should-retry: false` unless `retryable`, which leaves the SDK's own retry
- * policy (2 retries with backoff for a 429) to decide, as against the real API.
+ * policy (2 retries with backoff for a 429) to decide, as against the real API. `{ hang: true }`
+ * is never answered, so a caller's timeout ends it.
  */
 export type ScriptedTurn =
-  OutputItem[] | { status: number; error: string; code?: string; retryable?: boolean };
+  | OutputItem[]
+  | { status: number; error: string; code?: string; retryable?: boolean }
+  | { hang: true };
 export type RecordedRequest = { path: string; body: any };
 let counter = 0;
 const id = (prefix: string) => `${prefix}_${++counter}`;
@@ -113,6 +116,8 @@ export async function startFakeOpenAI(options: FakeOpenAIOptions = {}): Promise<
     if (path.endsWith('/responses')) {
       const turn = turns.shift() ?? options.policy?.(body);
       if (!turn) return send(500, { error: { message: 'No scripted model turn left.' } });
+      // Never answered: the client's own timeout ends it (`close` drops the connection).
+      if ('hang' in turn) return;
       // A coded error (quota) is final unless `retryable`: `x-should-retry` stops the SDK retrying.
       if (!Array.isArray(turn))
         return turn.code
@@ -159,6 +164,7 @@ export async function startFakeOpenAI(options: FakeOpenAIOptions = {}): Promise<
         process.env.OPENAI_API_KEY = '';
         delete process.env.OPENAI_BASE_URL;
         server.close(() => resolve());
+        server.closeAllConnections();
       }),
   };
 }

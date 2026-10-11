@@ -63,6 +63,17 @@ const FLAG_KIND: Record<string, string> = {
   commitment: 'a commitment (refund, reversal, waiver, retry, deadline)',
 };
 const words = (reason: string) => reason.replaceAll('_', ' ');
+
+/** What the operator is told about who wrote the brief (plan Part 2 §6.2). */
+function notice(brief: AnyRecord) {
+  if (brief.mode === 'full')
+    return 'ⓘ Facts below are checked by code; the summary and the draft were written by AI from those facts only.';
+  if (brief.degradedReason === 'missing_key')
+    return 'ⓘ AI summary unavailable: no model key is configured. Facts are checked by code; claims were found by pattern matching.';
+  if (brief.degradedReason)
+    return 'ⓘ AI summary unavailable: the model did not respond. Facts are checked by code; claims were found by pattern matching.';
+  return 'ⓘ Facts below are checked by code; claims were found by pattern matching.';
+}
 const citations = (evidence: AnyRecord[]) => evidence.map((e) => e.citation).join(' · ');
 
 /** One claim of the assistant, its verdict and what it rests on. */
@@ -90,8 +101,9 @@ function Verdict({ brief, verdict }: { brief: AnyRecord; verdict: AnyRecord }) {
 }
 
 /**
- * The verified case brief (plan Part 2 §6.2-6.3), deterministic path: every claim was found by
- * pattern matching and judged by code. Presentational: the page owns the brief and the request.
+ * The verified case brief (plan Part 2 §6.2-6.3). Every claim is judged by code; the mode says who
+ * found the claims and wrote the prose (the model, or pattern matching and the template when it is
+ * degraded). Presentational: the page owns the brief and the request.
  */
 export function CaseBriefPanel({
   brief,
@@ -140,13 +152,32 @@ export function CaseBriefPanel({
       {brief && (
         <>
           <p className="brief-notice" role="note">
-            ⓘ Facts below are checked by code; claims were found by pattern matching.
+            {notice(brief)}
           </p>
           {brief.previousCases.map((c: AnyRecord) => (
             <p className="muted" key={c.id}>
               Previous case {c.id}, closed{c.closedAt ? ` ${date(c.closedAt)}` : ''}
             </p>
           ))}
+          {brief.prose && (
+            <>
+              <h4>Summary (AI-written)</h4>
+              <p className="brief-summary">{brief.prose.summary}</p>
+              <p className="brief-next-step">
+                <b>Next step:</b> {brief.prose.nextStep}
+              </p>
+              {brief.prose.flags.length > 0 && (
+                <ul role="list" className="brief-flags">
+                  {brief.prose.flags.map((f: AnyRecord, i: number) => (
+                    <li key={`${f.field}-${i}`}>
+                      ⚠ Unbacked {words(f.kind)} “{f.found}” in the {f.field}
+                      {f.substituted ? ', replaced by a placeholder' : ''}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
           <h4>Findings</h4>
           {brief.findings.length ? (
             <ul role="list">
@@ -169,7 +200,7 @@ export function CaseBriefPanel({
           ) : (
             <p className="muted">Nothing to act on.</p>
           )}
-          <h4>What the assistant said (pattern matching)</h4>
+          <h4>What the assistant said{brief.mode === 'full' ? '' : ' (pattern matching)'}</h4>
           {brief.verdicts.length ? (
             <ul role="list">
               {brief.verdicts.map((v: AnyRecord) => (
@@ -212,8 +243,14 @@ export function CaseBriefPanel({
               </li>
             ))}
           </ol>
-          <h4>Reply to customer (template)</h4>
-          <pre className="brief-reply">{brief.templateReply}</pre>
+          <h4>Reply to customer ({brief.templateReply ? 'template' : 'AI draft'})</h4>
+          {brief.draftFallback === 'post_check' && (
+            <p className="muted">
+              The AI draft stated something no verified fact backs, so the template is shown
+              instead.
+            </p>
+          )}
+          <pre className="brief-reply">{brief.templateReply ?? brief.prose?.draftReply}</pre>
           {reply.closed ? (
             <p className="muted">This case is closed: the brief is a read-only review.</p>
           ) : (

@@ -298,7 +298,7 @@ export default function Home() {
       const b = await api(`incidents/${id}/brief`, {});
       if (stillOpen()) {
         setBrief(b);
-        setDraft(b.prose?.draftReply ?? b.templateReply ?? '');
+        setDraft(b.templateReply ?? b.prose?.draftReply ?? '');
         setRefused(null);
         setAcknowledged(false);
       }

@@ -81,21 +81,30 @@ export async function fallbackProvider(error: unknown, operation: 'responses' | 
   }
   return provider;
 }
+/**
+ * Per-call OpenAI request options (`timeout`, `maxRetries`, `signal`), on top of the client's
+ * defaults. claude-cli has its own time limit and ignores them.
+ */
+export type ResponseRequestOptions = Parameters<OpenAI['responses']['create']>[1];
 /** A Responses call and the provider that actually answered it (after any quota fallback). */
 export async function createAttributedResponse(
   body: ResponseCreateParamsNonStreaming,
+  options?: ResponseRequestOptions,
 ): Promise<{ provider: ModelProvider; response: Response }> {
   if ((await activeProvider()) === 'claude-cli')
     return { provider: 'claude-cli', response: await createClaudeResponse(body) };
   try {
-    return { provider: 'openai', response: await openai().responses.create(body) };
+    return { provider: 'openai', response: await openai().responses.create(body, options) };
   } catch (e) {
     if (!(await fallbackProvider(e, 'responses'))) throw e;
     return { provider: 'claude-cli', response: await createClaudeResponse(body) };
   }
 }
-export async function createResponse(body: ResponseCreateParamsNonStreaming) {
-  return (await createAttributedResponse(body)).response;
+export async function createResponse(
+  body: ResponseCreateParamsNonStreaming,
+  options?: ResponseRequestOptions,
+) {
+  return (await createAttributedResponse(body, options)).response;
 }
 /** OpenAI only: Claude has no embeddings. Search falls back to lexical retrieval instead. */
 export async function createEmbeddings(body: EmbeddingCreateParams) {

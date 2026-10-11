@@ -118,10 +118,14 @@ describe('Operator inbox', () => {
     // Act
     await brief.getByRole('button', { name: 'Generate brief' }).click();
     // Assert
+    await expect(brief.getByRole('note')).toContainText('written by AI from those facts only');
     await expect(brief.getByText('Contradicted:')).toBeAttached();
     await expect(brief.getByText('“I could not complete the transfer.”')).toBeVisible();
     await expect(brief.getByText('Retry advice on a completed payment')).toBeVisible();
     await expect(brief.getByText('[procedure-3 v2]', { exact: false }).first()).toBeVisible();
+    await expect(
+      brief.getByRole('heading', { name: 'Reply to customer (AI draft)' }),
+    ).toBeVisible();
     await expect(brief.locator('.brief-reply')).toContainText(
       'Please do not send this payment again: it has already been completed.',
     );

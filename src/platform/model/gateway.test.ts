@@ -87,6 +87,15 @@ describe('createResponse', () => {
       [['/v1/responses', body]],
     );
   });
+  it('should give up on an answer that outlives the timeout the caller set', async () => {
+    // Arrange
+    fake.script({ hang: true });
+    const body = { model: 'test-model', input: 'Hi', store: false };
+    // Act & Assert
+    await assert.rejects(createResponse(body, { timeout: 50, maxRetries: 0 }), {
+      message: 'Request timed out.',
+    });
+  });
 });
 describe('createEmbeddings', () => {
   let fake: FakeOpenAI;
