@@ -32,7 +32,7 @@ npm run doctor
 npm run dev
 ```
 
-Open **http://127.0.0.1:3000**. This starts both the web application and bank API (port 4001); Ctrl+C stops both. `doctor` makes a small real model request and embedding request, consuming API quota. Accounts, manual transfers, documents, and support cases can be explored without a key; chat and semantic search require one. The supplied index contains real embeddings, so startup does not regenerate them.
+Open **http://127.0.0.1:3000**. This starts both the web application and bank API (port 4001); Ctrl+C stops both. `doctor` makes a small real model request and embedding request, consuming API quota. Accounts, manual transfers, documents, and support cases can be explored without a key; chat and semantic search use OpenAI when a key is set, otherwise `MODEL_PROVIDER=auto` falls back to the Claude CLI and lexical search (see above). The supplied index contains real embeddings, so startup does not regenerate them.
 
 ## First-run check
 
@@ -72,7 +72,10 @@ Existing installations: stop the services and run `npm run reset` to load the up
 | `npm run scenario -- normal` | Configures the running bank with normal responses |
 | `npm run scenario -- intermittent 17` | Activates a reproducible sequence of transport incidents |
 | `npm run scenario -- lost-response` | The next new operation receives an error after its effects are committed |
-| `npm run typecheck` / `npm test` | Checks types and public invariants |
+| `npm run typecheck` / `npm test` | Checks types and runs every colocated unit and integration test |
+| `npm run lint` / `npm run format:check` / `npm run format` | ESLint (layer boundaries included) and Prettier |
+| `npm run test:e2e` | Playwright journeys on an isolated stack (ports 3100/4101/4102) |
+| `npm run eval -- <suite.ts>` | Real-model (L5) eval harness with noise-derived thresholds; may spend model quota (see `evals/AGENTS.md`) |
 | `npm run build` | Creates the production build; run this before `npm start` |
 | `npm start` | Starts both services using an existing production build |
 
@@ -97,6 +100,11 @@ src/support/           Support cases and the operator case view
 src/identity/          People, signed session, and actor
 src/platform/          Config, crypto, app DB, bank client, model gateway, HTTP, telemetry
 src/server/            Composition root: route table, request handler, app seed
+src/shared/            Shared kernel: policy rules table and the prompt fence
+evals/                 Generic real-model eval harness (cases, runner, thresholds, report)
+tests/                 Shared test harness, fixtures and factories (tests are colocated)
+docs/                  Challenge brief and bank API contract
+proxy.ts               Next 16 Proxy: Host allowlist against DNS rebinding (P0-5)
 simulator/             External-bank simulator and ledger (test dependency)
 fixtures/              Documents and initial index
 scripts/               Startup, seed, reset, and utilities
