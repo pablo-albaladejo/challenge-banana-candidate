@@ -11,4 +11,6 @@ export type CaseMessage = {
 export type ConversationHistory = {
   /** Every message of the conversation, in time order. */
   messagesIn(conversationId: string): CaseMessage[];
+  /** The case conversation, owned by the case's customer. Wired to `conversations().getOwnedConversation`. */
+  conversation(conversationId: string, userId: string): { id: string; created_at: string };
 };

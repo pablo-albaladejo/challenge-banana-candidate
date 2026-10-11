@@ -5,6 +5,7 @@ export type CaseIntent = {
   status: string;
   bank_reference: string | null;
   payload: TransferInput;
+  created_at: string;
 };
 /** The transfers of a case. Wired to `transfers().getConversationTransfers`. */
 export type ConversationTransfers = {
@@ -13,4 +14,8 @@ export type ConversationTransfers = {
    * as `userId` (the case's customer).
    */
   reconcileAndList(userId: string, conversationId: string): Promise<CaseIntent[]>;
+  /** Checks one intent with the bank; a `processing` one only once it is stale. */
+  reconcile(userId: string, intentId: string): Promise<unknown>;
+  /** The bank reference of every intent of the customer, any conversation. */
+  customerIntents(userId: string): { id: string; bank_reference: string | null }[];
 };

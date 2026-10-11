@@ -18,6 +18,7 @@ import { makeGetOperationStatus } from '../application/use-cases/get-operation-s
 import { makeListPendingTransfers } from '../application/use-cases/list-pending-transfers';
 import { makeListLiveProposals } from '../application/use-cases/list-live-proposals';
 import { makeGetConversationTransfers } from '../application/use-cases/get-conversation-transfers';
+import { makeListCustomerIntents } from '../application/use-cases/list-customer-intents';
 import type { Clock } from '../../shared/ports/clock';
 import type { Ids } from '../../shared/ports/ids';
 import type { UnitOfWork } from '../../shared/ports/unit-of-work';
@@ -76,6 +77,7 @@ export function wireTransfers(overrides: TransfersOverrides = {}) {
     listPendingTransfers: makeListPendingTransfers({ ...deps, reconcileIntent }),
     listLiveProposals: makeListLiveProposals(deps),
     getConversationTransfers: makeGetConversationTransfers({ ...deps, reconcileIntent }),
+    listCustomerIntents: makeListCustomerIntents(deps),
     /** Tests only: the services, wired to the same deps. */
     internals: { transition, authorizeTransfer, dispatchTransfer, dispatching: deps.dispatching },
   };

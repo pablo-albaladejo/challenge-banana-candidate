@@ -2,18 +2,25 @@ import type { Person } from '../../../src/types';
 import type { AnyRecord } from '../lib/api';
 import { date, money } from '../lib/format';
 import { Icon } from '../shell/Icon';
+import { CaseBriefPanel } from './CaseBriefPanel';
 export function OperatorCases({
   current,
   dashboard,
   people,
   selectedCase,
   onOpenCase,
+  brief,
+  briefBusy,
+  onGenerateBrief,
 }: {
   current: Person;
   dashboard: AnyRecord;
   people: Person[];
   selectedCase: AnyRecord | null;
   onOpenCase: (id: string) => void;
+  brief: AnyRecord | null;
+  briefBusy: boolean;
+  onGenerateBrief: () => void;
 }) {
   return (
     <>
@@ -70,6 +77,7 @@ export function OperatorCases({
               <h3>Latest message</h3>
               <blockquote>{selectedCase.lastMessage?.content}</blockquote>
               <p className="muted">Received {date(selectedCase.incident.created_at)}</p>
+              <CaseBriefPanel brief={brief} busy={briefBusy} onGenerate={onGenerateBrief} />
               {selectedCase.history?.length > 0 && (
                 <>
                   <h3>Conversation</h3>

@@ -1035,6 +1035,86 @@ label select {
   display: block;
   color: var(--muted);
 }
+.case-brief {
+  margin: 22px 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--white);
+}
+.case-brief-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.case-brief-heading h3 {
+  margin: 0;
+}
+.case-brief-heading button {
+  margin-left: auto;
+}
+.case-brief h4 {
+  margin: 18px 0 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.case-brief ul,
+.case-brief ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+}
+.case-brief small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+.brief-notice {
+  font-size: 11px;
+  color: var(--muted);
+}
+.brief-verdict {
+  display: flex;
+  gap: 8px;
+  padding: 6px 0;
+}
+.brief-verdict p {
+  margin: 0;
+}
+.brief-verdict.contradicted {
+  color: var(--danger);
+}
+.brief-procedures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 12px;
+}
+.brief-facts li {
+  padding: 4px 0;
+}
+.brief-timeline li {
+  display: grid;
+  grid-template-columns: 42px 70px 1fr auto;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+}
+.brief-timeline li span {
+  overflow-wrap: anywhere;
+}
+.brief-reply {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font);
+  font-size: 12px;
+  padding: 12px;
+  background: var(--paper);
+  border-radius: 7px;
+}
 .search-form {
   display: flex;
   align-items: center;

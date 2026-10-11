@@ -19,7 +19,21 @@ import type { NewRun } from '../../src/assistant/application/ports/run-repositor
 import type { NewApproval } from '../../src/transfers/domain/approval';
 import type { NewIncident } from '../../src/support/domain/incident';
 import type { NewEvent } from '../../src/platform/telemetry/events.repo';
-import { accounts, conversations, customers, money } from './world';
+import type {
+  CaseEvidence,
+  EvidenceIntent,
+  EvidenceMessage,
+  WindowOperation,
+} from '../../src/support/domain/case-evidence';
+import type { Claim, VerifiedFact } from '../../src/support/domain/claims';
+import {
+  accounts,
+  cases,
+  conversations,
+  customers,
+  historicTransfer,
+  money,
+} from './world';
 
 const isoDate = () =>
   faker.date.between({ from: '2025-01-01', to: '2026-06-30' }).toISOString().slice(0, 10);
@@ -231,3 +245,106 @@ export const eventFactory = new Factory<NewEvent>()
   .attr('kind', 'tool.completed')
   .attr('data', () => JSON.stringify(eventDataFactory.build()))
   .attr('createdAt', () => new Date().toISOString());
+
+// What the verified case brief judges (src/support/domain). The defaults are lucia's seeded case:
+// the conversation, its messages, the intent stored as failed and the operation the bank booked.
+
+/** A message of lucia's support conversation, at its seeded time. */
+export const evidenceMessageFactory = new Factory<EvidenceMessage>()
+  .sequence('id', (i) => `message-evidence-${i}`)
+  .attr('role', 'assistant')
+  .attr('content', () => faker.lorem.sentence())
+  .attr('created_at', '2026-09-23T16:40:00.000Z');
+
+/** A transfer intent of lucia's support conversation; by default the historic one, stored as failed. */
+export const evidenceIntentFactory = new Factory<EvidenceIntent>()
+  .attr('id', historicTransfer.intentId)
+  .attr('status', 'failed')
+  .attr('bank_reference', historicTransfer.reference)
+  .attr('payload', () => ({ ...historicTransfer.payload }))
+  .attr('created_at', '2026-09-23T16:41:10.000Z');
+
+/** A bank operation of the case window; by default the historic one, linked to its intent. */
+export const windowOperationFactory = new Factory<WindowOperation>()
+  .attr('id', historicTransfer.operationId)
+  .attr('userId', customers.lucia)
+  .attr('reference', historicTransfer.reference)
+  .attr('fromAccountId', historicTransfer.fromAccountId)
+  .attr('toAccountId', historicTransfer.toAccountId)
+  .attr('amountCents', historicTransfer.amountCents)
+  .attr('concept', historicTransfer.concept)
+  .attr('createdAt', '2026-09-23T16:41:12.000Z')
+  .attr('status', 'completed')
+  .attr('linkedIntentId', historicTransfer.intentId);
+
+/** Lucía's seeded case as `case-facts` gathers it: the bank reachable, no agent activity recorded. */
+export const caseEvidenceFactory = new Factory<CaseEvidence>()
+  .attr('incident', () => ({ id: cases.lucia, created_at: '2026-09-23T16:40:00.000Z' }))
+  .attr('customer', () => ({ id: customers.lucia, name: 'Lucía Martín' }))
+  .attr('conversation', () => ({
+    id: conversations.luciaSupport,
+    created_at: '2026-09-23T16:40:00.000Z',
+  }))
+  .attr('messages', () => [
+    evidenceMessageFactory.build({
+      id: 'message-lucia-1',
+      role: 'user',
+      content: 'Transfer EUR 85 to Bruno for the team dinner.',
+    }),
+    evidenceMessageFactory.build({
+      id: 'message-lucia-2',
+      content: 'I could not complete the transfer. You can try again.',
+    }),
+  ])
+  .attr('events', () => [])
+  .attr('intents', () => [evidenceIntentFactory.build()])
+  .attr('customerReferences', () => [
+    { id: historicTransfer.intentId, bank_reference: historicTransfer.reference },
+  ])
+  .attr('allOperations', () => [windowOperationFactory.build()])
+  .attr('bankFailure', null)
+  .attr('accounts', () => [{ id: accounts.lucia, label: 'Aurora account' }])
+  .attr('contacts', () => [{ id: accounts.bruno, name: 'Bruno Vidal' }])
+  .attr('movements', () => [])
+  .attr('previousCases', () => [])
+  .attr('caseDate', '2026-09-23');
+
+/** A fact the brief established. Override `kind`, `value` and `statement` with what the case is about. */
+export const verifiedFactFactory = new Factory<VerifiedFact>()
+  .sequence('id', (i) => `F${i}`)
+  .attr('kind', 'amount')
+  .attr('value', 'EUR 85.00')
+  .attr('statement', 'The bank completed your transfer of EUR 85.00 to Bruno Vidal.')
+  .attr('evidence', () => [
+    {
+      kind: 'operation' as const,
+      id: historicTransfer.operationId,
+      citation: `${historicTransfer.operationId} (bank)`,
+    },
+  ]);
+
+type ClaimOf<K extends Claim['kind']> = Extract<Claim, { kind: K }>;
+// Hand-built claims stand in for the model extractor's: the oracle judges them on its rules alone.
+// Pattern-matched claims come from `regexClaims`, which also decides whether each may be judged.
+const claimBase = { messageId: 'message-lucia-2', quote: 'quoted', extractedBy: 'model' as const };
+
+/** A status claim of lucia's assistant message; by default the failure she was told about. */
+export const statusClaimFactory = new Factory<ClaimOf<'operation_status'>>()
+  .sequence('id', (i) => `message-lucia-2#s${i}`)
+  .attrs({ ...claimBase, kind: 'operation_status', status: 'not_completed' })
+  .attr('amountCents', null)
+  .attr('reference', null);
+
+/** An amount claim of lucia's assistant message. Override `quote` with the sentence it came from. */
+export const amountClaimFactory = new Factory<ClaimOf<'amount'>>()
+  .sequence('id', (i) => `message-lucia-2#a${i}`)
+  .attrs({ ...claimBase, kind: 'amount' })
+  .attr('amountCents', historicTransfer.amountCents)
+  .attr('reference', null);
+
+/** A policy claim of lucia's assistant message (the model extractor's kind); by default the Aurora fee. */
+export const policyClaimFactory = new Factory<ClaimOf<'policy_amount'>>()
+  .sequence('id', (i) => `message-lucia-2#p${i}`)
+  .attrs({ ...claimBase, kind: 'policy_amount', policy: 'monthly_fee' })
+  .attr('product', 'aurora')
+  .attr('amountCents', 600);

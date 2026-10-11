@@ -99,7 +99,8 @@ export const POLICY_RULES: readonly PolicyEntry[] = [
   })),
 ];
 
-const inForce = (entry: PolicyEntry, onDate: string) =>
+/** Whether `entry` is in force on `onDate` (ISO date): the rule `policyFor` applies to every entry. */
+export const inForce = (entry: PolicyEntry, onDate: string) =>
   entry.validFrom <= onDate && (entry.validTo === null || onDate <= entry.validTo);
 
 /**

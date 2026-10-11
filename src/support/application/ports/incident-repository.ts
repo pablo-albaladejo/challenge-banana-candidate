@@ -7,4 +7,6 @@ export type IncidentRepository = {
   byId(id: string): IncidentRow | undefined;
   /** The open case of a conversation, if any. */
   openIn(conversationId: string): { id: string } | undefined;
+  /** The closed cases of a conversation, oldest first. */
+  closedIn(conversationId: string): { id: string; created_at: string }[];
 };

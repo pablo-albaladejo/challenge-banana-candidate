@@ -42,11 +42,20 @@ export const conversations = {
   luciaSupport: 'conv-lucia-support',
   /** Holds the closed case `cases.luciaGuide`: three messages and no agent activity. */
   luciaGuide: 'conv-lucia-activity-3',
+  carlaSupport: 'conv-carla-support',
+  elenaSupport: 'conv-elena-support',
+  diegoSupport: 'conv-diego-support',
+  inesSupport: 'conv-ines-support',
 } as const;
 
 export const cases = {
   lucia: 'case-lucia',
   luciaGuide: 'case-routine-lucia-guide',
+  /** The five open cases the verified brief is pinned on (plan Part 2 §7.5). */
+  carla: 'case-carla',
+  elena: 'case-elena',
+  diego: 'case-diego',
+  ines: 'case-ines',
 } as const;
 
 /** The transfer lucia made before the exercise: booked at the bank, recorded as failed by the app. */
@@ -66,6 +75,16 @@ export const historicTransfer = {
     amountCents: 8500,
     concept: 'Team dinner',
   },
+} as const;
+
+/** The transfer elena's account made to hugo's with no intent in the app: the assistant never sent it. */
+export const unlinkedTransfer = {
+  operationId: 'op-historic-elena',
+  reference: 'ref-historic-elena',
+  conversationId: conversations.elenaSupport,
+  fromAccountId: accounts.elena,
+  toAccountId: accounts.hugo,
+  amountCents: 2500,
 } as const;
 
 /** Ids that exist nowhere in the seed, for not-found and forbidden paths. */

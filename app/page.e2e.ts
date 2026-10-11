@@ -105,6 +105,27 @@ describe('Operator inbox', () => {
     // Assert
     await expect(page.getByRole('heading', { level: 2, name: customer })).toBeVisible();
   });
+  it('should show the operator that the bank completed the transfer the assistant called failed', async ({
+    page,
+  }) => {
+    // Arrange
+    await openAs(page, 'Marta Sanz · Operator');
+    await page
+      .locator('.case-item')
+      .filter({ hasText: 'Could someone check the dinner payment with Bruno' })
+      .click();
+    const brief = page.getByRole('region', { name: 'Verified brief' });
+    // Act
+    await brief.getByRole('button', { name: 'Generate brief' }).click();
+    // Assert
+    await expect(brief.getByText('Contradicted:')).toBeAttached();
+    await expect(brief.getByText('“I could not complete the transfer.”')).toBeVisible();
+    await expect(brief.getByText('Retry advice on a completed payment')).toBeVisible();
+    await expect(brief.getByText('[procedure-3 v2]', { exact: false }).first()).toBeVisible();
+    await expect(brief.locator('.brief-reply')).toContainText(
+      'Please do not send this payment again: it has already been completed.',
+    );
+  });
 });
 describe('Document library', () => {
   it('should show customers the 68 public documents only', async ({ page }) => {

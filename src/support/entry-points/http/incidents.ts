@@ -3,7 +3,7 @@ import { json } from '../../../platform/http/respond';
 import { support } from '../dependencies';
 import type { Handler } from '../../../platform/http/context';
 /** The role gate stays here, before any use case (plan §10.11, C2). */
-function requireOperator(role: string) {
+export function requireOperator(role: string) {
   if (role !== 'operator') throw new HttpError(403, 'Operator role required.');
 }
 export const listIncidents: Handler = ({ actor }) => {

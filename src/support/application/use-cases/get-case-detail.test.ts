@@ -220,6 +220,15 @@ describe('getCaseDetail', () => {
     assert.equal(detail.customer?.id, customers.lucia);
     assert.equal(detail.customer?.role, 'customer');
   });
+  it('should keep reporting missing agent activity after an operator generated a brief', async () => {
+    // Arrange
+    await support().generateCaseBrief({ operatorId: operators.marta, incidentId: caseId });
+    // Act
+    const detail = await caseDetail(operators.marta, caseId);
+    // Assert
+    assert.deepEqual(detail.events, []);
+    assert.match(detail.gaps!, /no agent activity/i);
+  });
   it('should refuse a customer before looking up the case', async () => {
     // Arrange
     const customer = customers.lucia;

@@ -1921,6 +1921,62 @@ describe('GET /api/incidents/:id', () => {
   });
 });
 
+describe('POST /api/incidents/:id/brief', () => {
+  beforeEach(() => seedApp());
+
+  it('should answer an operator with the verified brief of the case', async () => {
+    // Arrange
+    const body = {};
+    // Act
+    const result = await api('POST', `incidents/${cases.lucia}/brief`, {
+      as: operators.marta,
+      body,
+    });
+    // Assert
+    assert.equal(result.status, 200);
+    assert.equal(result.body.incidentId, cases.lucia);
+    assert.equal(result.body.mode, 'degraded');
+    assert.equal(result.body.promptVersion, 'brief-v2');
+  });
+
+  it('should reject a customer before reading the body', async () => {
+    // Arrange
+    const body = { unexpected: true };
+    // Act
+    const result = await api('POST', `incidents/${cases.lucia}/brief`, {
+      as: customers.lucia,
+      body,
+    });
+    // Assert
+    assert.equal(result.status, 403);
+    assert.equal(result.body.error, 'Operator role required.');
+  });
+
+  it('should reject a body with any field', async () => {
+    // Arrange
+    const body = { mode: 'full' };
+    // Act
+    const result = await api('POST', `incidents/${cases.lucia}/brief`, {
+      as: operators.marta,
+      body,
+    });
+    // Assert
+    assert.equal(result.status, 400);
+  });
+
+  it('should report an unknown case as not found', async () => {
+    // Arrange
+    const body = {};
+    // Act
+    const result = await api('POST', `incidents/${unknown.case}/brief`, {
+      as: operators.marta,
+      body,
+    });
+    // Assert
+    assert.equal(result.status, 404);
+  });
+});
+
 describe('GET /api/documents', () => {
   beforeEach(() => seedApp());
 

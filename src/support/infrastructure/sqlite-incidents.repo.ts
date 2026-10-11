@@ -20,9 +20,16 @@ export function openIncidentIn(conversationId: string) {
     'open',
   ) as { id: string } | undefined;
 }
+/** The closed incidents of a conversation, oldest first. */
+export function closedIncidentsIn(conversationId: string) {
+  return statement(
+    'SELECT id, created_at FROM incidents WHERE conversation_id=? AND status=? ORDER BY created_at, id',
+  ).all(conversationId, 'closed') as { id: string; created_at: string }[];
+}
 export const sqliteIncidents: IncidentRepository = {
   insert: insertIncident,
   all: allIncidents,
   byId: incidentById,
   openIn: openIncidentIn,
+  closedIn: closedIncidentsIn,
 };

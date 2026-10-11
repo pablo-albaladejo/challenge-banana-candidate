@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { appDb } from '../../platform/db/db';
 import {
   allIncidents,
+  closedIncidentsIn,
   incidentById,
   insertIncident,
   openIncidentIn,
@@ -51,5 +52,27 @@ describe('incidents repository', () => {
     const found = openIncidentIn(open.conversationId);
     // Assert
     assert.deepEqual(found, { id: open.id });
+  });
+  it('should list the closed incidents of a conversation, oldest first', () => {
+    // Arrange
+    const open = incidentFactory.build();
+    const newer = incidentFactory.build({
+      conversationId: open.conversationId,
+      status: 'closed',
+      createdAt: '2026-09-02T10:00:00.000Z',
+    });
+    const older = incidentFactory.build({
+      conversationId: open.conversationId,
+      status: 'closed',
+      createdAt: '2026-09-01T10:00:00.000Z',
+    });
+    for (const incident of [open, newer, older]) insertIncident(incident);
+    // Act
+    const closed = closedIncidentsIn(open.conversationId);
+    // Assert
+    assert.deepEqual(closed, [
+      { id: older.id, created_at: older.createdAt },
+      { id: newer.id, created_at: newer.createdAt },
+    ]);
   });
 });

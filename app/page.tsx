@@ -32,11 +32,14 @@ export default function Home() {
     [sources, setSources] = useState<AnyRecord[] | null>(null),
     [searchMode, setSearchMode] = useState<'semantic' | 'lexical'>('semantic');
   const [selectedCase, setSelectedCase] = useState<AnyRecord | null>(null),
+    [brief, setBrief] = useState<AnyRecord | null>(null),
+    [briefsBusy, setBriefsBusy] = useState<ReadonlySet<string>>(new Set()),
     [from, setFrom] = useState(''),
     [to, setTo] = useState(''),
     [amount, setAmount] = useState(''),
     [concept, setConcept] = useState('');
-  const activeConversation = useRef<string | null>(null);
+  const activeConversation = useRef<string | null>(null),
+    openCaseId = useRef<string | null>(null);
   const generation = useRef(0),
     messagesEnd = useRef<HTMLDivElement>(null);
   async function refresh(g = generation.current) {
@@ -55,6 +58,8 @@ export default function Home() {
     setConversationId(null);
     setMessages([]);
     setSelectedCase(null);
+    openCaseId.current = null;
+    setBrief(null);
     setDocument(null);
     setDocs([]);
     setSources(null);
@@ -259,11 +264,37 @@ export default function Home() {
   }
   async function openCase(id: string) {
     const g = generation.current;
+    openCaseId.current = id;
+    setBrief(null);
     try {
       const d = await api(`incidents/${id}`);
       if (g === generation.current) setSelectedCase(d);
     } catch (e) {
       setError((e as Error).message);
+    }
+  }
+  /**
+   * The verified brief of the open case. Its answer and its error belong to that case: dropped if
+   * the person or the case changed meanwhile. Busy is kept per case, so a case still generating
+   * shows busy again when the operator returns to it.
+   */
+  async function generateBrief() {
+    const g = generation.current;
+    const id = selectedCase?.incident.id;
+    if (!id) return;
+    setBriefsBusy((busy) => new Set(busy).add(id));
+    const stillOpen = () => g === generation.current && openCaseId.current === id;
+    try {
+      const b = await api(`incidents/${id}/brief`, {});
+      if (stillOpen()) setBrief(b);
+    } catch (e) {
+      if (stillOpen()) setError((e as Error).message);
+    } finally {
+      setBriefsBusy((busy) => {
+        const next = new Set(busy);
+        next.delete(id);
+        return next;
+      });
     }
   }
   async function updateIndex() {
@@ -391,6 +422,9 @@ export default function Home() {
                   people={people}
                   selectedCase={selectedCase}
                   onOpenCase={openCase}
+                  brief={brief}
+                  briefBusy={briefsBusy.has(selectedCase?.incident.id)}
+                  onGenerateBrief={generateBrief}
                 />
               )}
               {tab === 'documents' && (

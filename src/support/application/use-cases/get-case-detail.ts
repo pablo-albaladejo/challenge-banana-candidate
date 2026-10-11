@@ -1,5 +1,5 @@
 import { requireCase, requireOperator } from '../../domain/incident';
-import { caseGaps, operationsFor } from '../../domain/case-evidence';
+import { caseGaps, isAgentEvent, operationsFor } from '../../domain/case-evidence';
 import type { Operation } from '../../../types';
 import type { IncidentRepository } from '../ports/incident-repository';
 import type { People } from '../ports/people';
@@ -11,10 +11,10 @@ import type { OperatorBank } from '../ports/operator-bank';
 type Deps = {
   people: People;
   incidents: IncidentRepository;
-  history: ConversationHistory;
+  history: Pick<ConversationHistory, 'messagesIn'>;
   events: EventReader;
-  transfers: ConversationTransfers;
-  bank: OperatorBank;
+  transfers: Pick<ConversationTransfers, 'reconcileAndList'>;
+  bank: Pick<OperatorBank, 'customer'>;
 };
 /**
  * Everything an operator needs to understand a case: the conversation, what the agent did, the
@@ -28,10 +28,14 @@ export const makeGetCaseDetail =
     requireOperator(people.find(operatorId));
     const incident = requireCase(incidents.byId(incidentId));
     const messages = history.messagesIn(incident.conversation_id);
-    const recorded = events.inConversation(incident.conversation_id).map((e) => ({
-      ...e,
-      data: JSON.parse(e.data),
-    }));
+    // Support's own audit events (`case.*`) are not agent activity.
+    const recorded = events
+      .inConversation(incident.conversation_id)
+      .filter(isAgentEvent)
+      .map((e) => ({
+        ...e,
+        data: JSON.parse(e.data),
+      }));
     const intents = await transfers.reconcileAndList(incident.user_id, incident.conversation_id);
     // Signed as the operator; any failure (a synchronous throw, a rejection or reading its answer)
     // is a named gap.
