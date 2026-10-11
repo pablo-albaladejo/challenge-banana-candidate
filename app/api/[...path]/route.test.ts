@@ -528,6 +528,36 @@ describe('GET /api/conversations', () => {
     // Assert
     assert.equal(result.status, 403);
   });
+
+  it('should list a conversation just started first', async () => {
+    // Arrange
+    const { body } = await api('POST', 'conversations', { as: customers.lucia });
+    // Act
+    const result = await api('GET', 'conversations', { as: customers.lucia });
+    // Assert
+    assert.equal(result.body[0].id, body.id);
+    assert.equal(result.body[0].title, 'New conversation');
+  });
+
+  it('should list the conversations of the session customer newest first', async () => {
+    // Arrange
+    // Act
+    const result = await api('GET', 'conversations', { as: customers.lucia });
+    // Assert
+    const times = result.body.map((c: any) => c.created_at);
+    assert.deepEqual(times, [...times].sort().reverse());
+  });
+
+  it('should keep a conversation started by one customer out of the list of another', async () => {
+    // Arrange
+    const { body } = await api('POST', 'conversations', { as: customers.lucia });
+    // Act
+    const result = await api('GET', 'conversations', { as: customers.bruno });
+    // Assert
+    assert.equal(result.status, 200);
+    assert.ok(result.body.every((c: any) => c.user_id === customers.bruno));
+    assert.ok(!result.body.some((c: any) => c.id === body.id));
+  });
 });
 
 describe('POST /api/conversations', () => {
@@ -551,6 +581,28 @@ describe('POST /api/conversations', () => {
     const result = await api('POST', 'conversations', { as: operators.marta });
     // Assert
     assert.equal(result.status, 403);
+  });
+
+  it('should answer only the id of the new conversation', async () => {
+    // Arrange
+    // Act
+    const result = await api('POST', 'conversations', { as: customers.lucia });
+    // Assert
+    assert.equal(result.status, 201);
+    assert.deepEqual(Object.keys(result.body), ['id']);
+    assert.match(result.body.id, /^[0-9a-f-]{36}$/);
+  });
+
+  it('should start the conversation at the current time', async () => {
+    // Arrange
+    const before = new Date().toISOString();
+    // Act
+    const created = await api('POST', 'conversations', { as: customers.lucia });
+    // Assert
+    const after = new Date().toISOString();
+    const detail = await api('GET', `conversations/${created.body.id}`, { as: customers.lucia });
+    const createdAt = detail.body.conversation.created_at;
+    assert.ok(before <= createdAt && createdAt <= after);
   });
 });
 
@@ -581,6 +633,53 @@ describe('GET /api/conversations/:id', () => {
     // Assert
     assert.equal(result.status, 404);
     assert.equal(result.body.error, 'Conversation not found.');
+  });
+
+  it('should hide a customer conversation from an operator as not found', async () => {
+    // Arrange
+    // Act
+    const result = await api('GET', `conversations/${conversations.luciaWelcome}`, {
+      as: operators.marta,
+    });
+    // Assert
+    assert.equal(result.status, 404);
+    assert.deepEqual(result.body, { error: 'Conversation not found.' });
+  });
+
+  it('should hide an unknown conversation as not found', async () => {
+    // Arrange
+    // Act
+    const result = await api('GET', 'conversations/conv-unknown', { as: customers.lucia });
+    // Assert
+    assert.equal(result.status, 404);
+    assert.deepEqual(result.body, { error: 'Conversation not found.' });
+  });
+
+  it('should answer the stored conversation row and its message rows', async () => {
+    // Arrange
+    // Act
+    const result = await api('GET', `conversations/${conversations.luciaWelcome}`, {
+      as: customers.lucia,
+    });
+    // Assert
+    assert.deepEqual(Object.keys(result.body), ['conversation', 'messages']);
+    assert.deepEqual(Object.keys(result.body.conversation), [
+      'id',
+      'user_id',
+      'title',
+      'created_at',
+    ]);
+    assert.equal(result.body.conversation.user_id, customers.lucia);
+    assert.deepEqual(Object.keys(result.body.messages[0]), [
+      'id',
+      'conversation_id',
+      'role',
+      'content',
+      'created_at',
+      'run_id',
+    ]);
+    const times = result.body.messages.map((m: any) => m.created_at);
+    assert.deepEqual(times, [...times].sort());
   });
 });
 
@@ -656,6 +755,43 @@ describe('POST /api/conversations/:id/messages', () => {
     // Assert
     assert.equal(result.status, 404);
     assert.equal(fake.requests.length, 0);
+  });
+
+  it('should leave the title and messages of another customer conversation as they were', async () => {
+    // Arrange
+    const before = await api('GET', `conversations/${conversations.brunoWelcome}`, {
+      as: customers.bruno,
+    });
+    // Act
+    const result = await api('POST', `conversations/${conversations.brunoWelcome}/messages`, {
+      as: customers.lucia,
+      body: { content: 'Rename this conversation' },
+    });
+    // Assert
+    assert.deepEqual(result.body, { error: 'Conversation not found.' });
+    const after = await api('GET', `conversations/${conversations.brunoWelcome}`, {
+      as: customers.bruno,
+    });
+    assert.deepEqual(after.body, before.body);
+  });
+
+  it('should keep the title a conversation already has', async () => {
+    // Arrange
+    const { body } = await api('POST', 'conversations', { as: customers.lucia });
+    fake.script(reply('First answer.'), reply('Second answer.'));
+    await api('POST', `conversations/${body.id}/messages`, {
+      as: customers.lucia,
+      body: { content: 'First question' },
+    });
+    // Act
+    await api('POST', `conversations/${body.id}/messages`, {
+      as: customers.lucia,
+      body: { content: 'Second question' },
+    });
+    // Assert
+    const detail = await api('GET', `conversations/${body.id}`, { as: customers.lucia });
+    assert.equal(detail.body.conversation.title, 'First question');
+    assert.equal(detail.body.messages.length, 4);
   });
 
   it('should ask to wait while the assistant is still answering in the conversation', async () => {
@@ -819,6 +955,21 @@ describe('POST /api/actions', () => {
     const result = await api('POST', 'actions', { as: customers.lucia, body });
     // Assert
     assert.equal(result.status, 404);
+  });
+
+  it('should name a conversation of another customer as not found before running the tool', async () => {
+    // Arrange
+    const body = {
+      name: 'request_human',
+      arguments: { summary: 'Help' },
+      conversationId: conversations.brunoWelcome,
+    };
+    // Act
+    const result = await api('POST', 'actions', { as: customers.lucia, body });
+    // Assert
+    assert.deepEqual(result.body, { error: 'Conversation not found.' });
+    const cases = await api('GET', 'incidents', { as: operators.marta });
+    assert.ok(!cases.body.some((c: any) => c.conversation_id === conversations.brunoWelcome));
   });
 
   it('should open a single human support case per conversation', async () => {

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { HttpError } from '../../../platform/http/http-error';
 import { assistant } from '../dependencies';
-import { conversationFor } from '../../../conversations';
+import { conversations } from '../../../conversations';
 import { json } from '../../../platform/http/respond';
 import type { Handler } from '../../../platform/http/context';
 const actionSchema = z.object({
@@ -23,7 +23,8 @@ const actionSchema = z.object({
 export const runAction: Handler = async ({ request, actor }) => {
   if (actor.role !== 'customer') throw new HttpError(403, 'A customer is required.');
   const body = actionSchema.parse(await request.json());
-  if (body.conversationId) conversationFor(body.conversationId, actor.id);
+  if (body.conversationId)
+    conversations().getOwnedConversation({ conversationId: body.conversationId, userId: actor.id });
   const ctx = {
     userId: actor.id,
     conversationId: body.conversationId || null,

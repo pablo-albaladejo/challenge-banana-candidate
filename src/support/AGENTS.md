@@ -29,7 +29,7 @@ Human support: the support cases (incidents) opened by customers or by the agent
 
 ### Testing Requirements
 
-- `operator-view.test.ts` (seeded app, real bank; pins the exact 403 message), `incidents.repo.test.ts`, `tools/request-human.tool.test.ts`; the handlers through `app/api/[...path]/route.test.ts`; E2E "Operator inbox" journeys.
+- `operator-view.test.ts` (seeded app, real bank; pins the exact 403 message), `incidents.repo.test.ts`, `tools/request-human.tool.test.ts`, `http/incidents.test.ts` (the handler gate on its own: a session whose role is customer but whose id is an operator's passes `caseDetail`'s person check, so only `requireOperator` rejects it); the handlers through `app/api/[...path]/route.test.ts`; E2E "Operator inbox" journeys.
 
 ### Common Patterns
 
@@ -39,7 +39,7 @@ Human support: the support cases (incidents) opened by customers or by the agent
 
 ### Internal
 
-- `../platform` (`db/statement`, `bank/bank`, `telemetry/events.repo`, `http/`), `../transfers`, `../conversations` (`messagesIn`), `../identity` (`person`), `../assistant` (`Tool` type only).
+- `../platform` (`db/statement`, `bank/bank`, `telemetry/events.repo`, `http/`), `../transfers`, `../conversations` (`conversations().listMessages`), `../identity` (`person`), `../assistant` (`Tool` type only).
 
 ### External
 

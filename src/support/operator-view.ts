@@ -1,5 +1,5 @@
 import { incidentById } from './incidents.repo';
-import { messagesIn } from '../conversations';
+import { conversations } from '../conversations';
 import { eventsIn } from '../platform/telemetry/events.repo';
 import { transfers } from '../transfers';
 import { HttpError } from '../platform/http/http-error';
@@ -15,7 +15,7 @@ export async function caseDetail(operatorId: string, id: string) {
   if (person(operatorId)?.role !== 'operator') throw new HttpError(403, 'Operator role required.');
   const incident = incidentById(id);
   if (!incident) throw new HttpError(404, 'Case not found.');
-  const history = messagesIn(incident.conversation_id);
+  const history = conversations().listMessages({ conversationId: incident.conversation_id });
   const events = eventsIn(incident.conversation_id).map((e) => ({
     ...e,
     data: JSON.parse(e.data),

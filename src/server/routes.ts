@@ -6,11 +6,7 @@ import { health } from '../platform/http/health';
 import { listPeople } from '../identity/http/people';
 import { currentSession, selectPerson } from '../identity/http/session';
 import { dashboard } from '../accounts/http/dashboard';
-import {
-  conversationDetail,
-  createConversation,
-  listConversations,
-} from '../conversations/http/conversations';
+import { conversationDetail, createConversation, listConversations } from '../conversations';
 import { confirmApproval } from '../transfers';
 import { incidentDetail, listIncidents } from '../support/http/incidents';
 import { postMessage, previewAnswer, runAction } from '../assistant';

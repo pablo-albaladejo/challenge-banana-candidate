@@ -1,9 +1,9 @@
 import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { appDb } from '../platform/db/db';
-import { insertConversation } from './conversations.repo';
-import { insertMessage, messagesIn } from './messages.repo';
-import { conversationFactory, messageFactory } from '../../tests/fixtures/factories';
+import { appDb } from '../../platform/db/db';
+import { insertConversation } from './sqlite-conversations.repo';
+import { insertMessage, messagesIn } from './sqlite-messages.repo';
+import { conversationFactory, messageFactory } from '../../../tests/fixtures/factories';
 
 describe('messages repository', () => {
   beforeEach(() => appDb().exec('DELETE FROM messages; DELETE FROM conversations'));

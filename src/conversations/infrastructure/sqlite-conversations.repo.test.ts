@@ -1,15 +1,15 @@
 import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { faker } from '@faker-js/faker';
-import { appDb } from '../platform/db/db';
+import { appDb } from '../../platform/db/db';
 import {
   conversationOf,
   conversationsOf,
   insertConversation,
   renameConversation,
-} from './conversations.repo';
-import { conversationFactory } from '../../tests/fixtures/factories';
-import { customers } from '../../tests/fixtures/world';
+} from './sqlite-conversations.repo';
+import { conversationFactory } from '../../../tests/fixtures/factories';
+import { customers } from '../../../tests/fixtures/world';
 
 describe('conversations repository', () => {
   beforeEach(() => appDb().exec('DELETE FROM messages; DELETE FROM conversations'));
@@ -55,7 +55,7 @@ describe('conversations repository', () => {
     insertConversation(conversation);
     const title = faker.lorem.words(4);
     // Act
-    renameConversation(conversation.id, title);
+    renameConversation(conversation.id, conversation.userId, title);
     // Assert
     assert.equal(conversationOf(conversation.id, conversation.userId)?.title, title);
   });

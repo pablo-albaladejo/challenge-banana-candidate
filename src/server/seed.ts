@@ -3,7 +3,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import path from 'node:path';
 import { documents, restoreIndex } from '../knowledge';
-import { insertConversation, insertMessage } from '../conversations';
+import { insertConversation } from '../conversations/infrastructure/sqlite-conversations.repo';
+import { insertMessage } from '../conversations/infrastructure/sqlite-messages.repo';
 import { insertIncident } from '../support';
 import { insertIntent } from '../transfers/infrastructure/sqlite-intents.repo';
 export function seedApp() {

@@ -1,20 +1,6 @@
-import { statement } from '../platform/db/statement';
-export type MessageRow = {
-  id: string;
-  conversation_id: string;
-  role: string;
-  content: string;
-  created_at: string;
-  run_id: string | null;
-};
-export type NewMessage = {
-  id: string;
-  conversationId: string;
-  role: string;
-  content: string;
-  createdAt: string;
-  runId: string | null;
-};
+import { statement } from '../../platform/db/statement';
+import type { MessageRow, NewMessage } from '../domain/conversation';
+import type { MessageRepository } from '../application/ports/message-repository';
 export function insertMessage(m: NewMessage) {
   statement(
     'INSERT INTO messages(id,conversation_id,role,content,created_at,run_id) VALUES(?,?,?,?,?,?)',
@@ -26,3 +12,4 @@ export function messagesIn(conversationId: string) {
     conversationId,
   ) as MessageRow[];
 }
+export const sqliteMessages: MessageRepository = { insert: insertMessage, in: messagesIn };

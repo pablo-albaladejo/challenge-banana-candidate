@@ -1,7 +1,6 @@
 import { randomIds, systemClock } from '../../platform/runtime';
-import { NotFoundError } from '../../shared/domain/errors';
 import { knowledge } from '../../knowledge';
-import { conversationOf, insertMessage, messagesIn } from '../../conversations';
+import { conversations } from '../../conversations';
 import { openaiModel } from '../infrastructure/openai-model.adapter';
 import { staticToolCatalog } from '../infrastructure/static-tool-catalog';
 import { sqliteRuns } from '../infrastructure/sqlite-runs.repo';
@@ -40,10 +39,10 @@ const catalog = staticToolCatalog(tools);
 export const toolDefinitions = catalog.definitions;
 const conversationLog: ConversationLog = {
   requireOwned(conversationId, userId) {
-    if (!conversationOf(conversationId, userId)) throw new NotFoundError('Conversation not found.');
+    conversations().getOwnedConversation({ conversationId, userId });
   },
-  append: insertMessage,
-  history: messagesIn,
+  append: (message) => conversations().appendMessage(message),
+  history: (conversationId) => conversations().listMessages({ conversationId }),
 };
 const defaults = (): AssistantDeps => ({
   model: openaiModel,

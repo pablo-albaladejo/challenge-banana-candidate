@@ -1,6 +1,6 @@
-import { statement } from '../platform/db/statement';
-export type ConversationRow = { id: string; user_id: string; title: string; created_at: string };
-export type NewConversation = { id: string; userId: string; title: string; createdAt: string };
+import { statement } from '../../platform/db/statement';
+import type { ConversationRow, NewConversation } from '../domain/conversation';
+import type { ConversationRepository } from '../application/ports/conversation-repository';
 export function insertConversation(c: NewConversation) {
   statement('INSERT INTO conversations(id,user_id,title,created_at) VALUES(?,?,?,?)').run(
     c.id,
@@ -20,6 +20,13 @@ export function conversationsOf(userId: string) {
     userId,
   ) as ConversationRow[];
 }
-export function renameConversation(id: string, title: string) {
-  statement('UPDATE conversations SET title=? WHERE id=?').run(title, id);
+/** Renames the conversation, only when `userId` owns it. */
+export function renameConversation(id: string, userId: string, title: string) {
+  statement('UPDATE conversations SET title=? WHERE id=? AND user_id=?').run(title, id, userId);
 }
+export const sqliteConversations: ConversationRepository = {
+  insert: insertConversation,
+  ownedBy: conversationOf,
+  ofUser: conversationsOf,
+  rename: renameConversation,
+};

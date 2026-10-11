@@ -14,8 +14,7 @@ import type {
   ToolContext,
   TransferInput,
 } from '../../src/types';
-import type { NewConversation } from '../../src/conversations/conversations.repo';
-import type { NewMessage } from '../../src/conversations/messages.repo';
+import type { NewConversation, NewMessage } from '../../src/conversations/domain/conversation';
 import type { NewRun } from '../../src/assistant/application/ports/run-repository';
 import type { NewApproval } from '../../src/transfers/domain/approval';
 import type { NewIncident } from '../../src/support/incidents.repo';
