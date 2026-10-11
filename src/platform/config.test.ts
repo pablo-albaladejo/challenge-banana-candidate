@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { faker } from '@faker-js/faker';
-import { assertProductionSecrets, loadConfig } from './config';
+import { assertProductionSecrets, loadConfig, localDefaultSecrets } from './config';
 
 const strongSecret = () => faker.string.alphanumeric({ length: 40 });
 const strongSecrets = () => ({
@@ -124,6 +124,118 @@ describe('assertProductionSecrets', () => {
     assert.throws(
       () => assertProductionSecrets(config, 'production'),
       /BANK_SERVICE_SECRET, BANK_ADMIN_SECRET, SESSION_SECRET/,
+    );
+  });
+  it('should fall back to the same local defaults the production check refuses', () => {
+    // Arrange
+    const env = {};
+    // Act
+    const config = loadConfig(env);
+    // Assert
+    assert.deepEqual(
+      {
+        serviceSecret: config.serviceSecret,
+        adminSecret: config.adminSecret,
+        sessionSecret: config.sessionSecret,
+      },
+      localDefaultSecrets,
+    );
+  });
+  for (const [key, name] of [
+    ['serviceSecret', 'BANK_SERVICE_SECRET'],
+    ['adminSecret', 'BANK_ADMIN_SECRET'],
+    ['sessionSecret', 'SESSION_SECRET'],
+  ] as const) {
+    it(`should reject a long ${name} built on its local default in production`, () => {
+      // Arrange
+      const padded = localDefaultSecrets[key] + strongSecret();
+      const config = { ...loadConfig(strongSecrets()), [key]: padded };
+      // Act & Assert
+      assert.throws(
+        () => assertProductionSecrets(config, 'production'),
+        (e: Error) => e.message.includes(name) && !e.message.includes(padded),
+      );
+    });
+  }
+  it('should reject a long secret built on another secret’s local default in production', () => {
+    // Arrange
+    const config = {
+      ...loadConfig(strongSecrets()),
+      sessionSecret: strongSecret() + localDefaultSecrets.serviceSecret,
+    };
+    // Act & Assert
+    assert.throws(() => assertProductionSecrets(config, 'production'), /SESSION_SECRET/);
+  });
+  it('should name the refused variables without revealing any secret value', () => {
+    // Arrange
+    const config = {
+      ...loadConfig({}),
+      sessionSecret: localDefaultSecrets.sessionSecret + strongSecret(),
+    };
+    const values = [config.serviceSecret, config.adminSecret, config.sessionSecret];
+    // Act & Assert
+    assert.throws(
+      () => assertProductionSecrets(config, 'production'),
+      (e: Error) =>
+        e.message.includes('BANK_SERVICE_SECRET, BANK_ADMIN_SECRET, SESSION_SECRET') &&
+        values.every((value) => !e.message.includes(value)),
+    );
+  });
+  it('should reject a 31-character secret in production', () => {
+    // Arrange
+    const config = {
+      ...loadConfig(strongSecrets()),
+      adminSecret: faker.string.alphanumeric({ length: 31 }),
+    };
+    // Act & Assert
+    assert.throws(() => assertProductionSecrets(config, 'production'), /BANK_ADMIN_SECRET/);
+  });
+  it('should accept 32-character secrets in production', () => {
+    // Arrange
+    const config = {
+      ...loadConfig({}),
+      serviceSecret: faker.string.alphanumeric({ length: 32 }),
+      adminSecret: faker.string.alphanumeric({ length: 32 }),
+      sessionSecret: faker.string.alphanumeric({ length: 32 }),
+    };
+    // Act & Assert
+    assert.doesNotThrow(() => assertProductionSecrets(config, 'production'));
+  });
+  it('should reject a local default written in another case in production', () => {
+    // Arrange
+    const shouted = localDefaultSecrets.adminSecret.toUpperCase() + strongSecret();
+    const config = { ...loadConfig(strongSecrets()), adminSecret: shouted };
+    // Act & Assert
+    assert.throws(
+      () => assertProductionSecrets(config, 'production'),
+      (e: Error) => e.message.includes('BANK_ADMIN_SECRET') && !e.message.includes(shouted),
+    );
+  });
+  it('should reject a local default written with other separators in production', () => {
+    // Arrange
+    const respelled = strongSecret() + localDefaultSecrets.serviceSecret.replaceAll('-', '_');
+    const config = { ...loadConfig(strongSecrets()), serviceSecret: respelled };
+    // Act & Assert
+    assert.throws(
+      () => assertProductionSecrets(config, 'production'),
+      (e: Error) => e.message.includes('BANK_SERVICE_SECRET') && !e.message.includes(respelled),
+    );
+  });
+  it('should name only the colliding variables when one value is reused in production', () => {
+    // Arrange
+    const shared = strongSecret();
+    const config = {
+      ...loadConfig(strongSecrets()),
+      serviceSecret: shared,
+      sessionSecret: shared,
+    };
+    // Act & Assert
+    assert.throws(
+      () => assertProductionSecrets(config, 'production'),
+      (e: Error) =>
+        e.message.includes('BANK_SERVICE_SECRET, SESSION_SECRET') &&
+        !e.message.includes('BANK_ADMIN_SECRET') &&
+        !e.message.includes(shared),
     );
   });
 });

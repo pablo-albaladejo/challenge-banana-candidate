@@ -4,7 +4,7 @@
 
 Date: 2026-10-09. Scope: the application side (`app/`, `src/`, `scripts/`, `next.config.ts`, `.env.example`), reviewed against `docs/challenge.md` and `docs/contracts.md`, after the Part 1 bug fixes were merged. `simulator/` is an external dependency and was only read, never changed.
 
-This document merges two independent reviews: an architecture review and a security review (OWASP Top 10 plus LLM-specific risks). Duplicates were merged. **Status: documented, not yet fixed.** The current priority is decoupling the architecture first; these findings are tackled afterwards, one by one, with TDD.
+This document merges two independent reviews: an architecture review and a security review (OWASP Top 10 plus LLM-specific risks). Duplicates were merged. **Status: P1-5 is fixed; every other finding is documented and not yet fixed.** The current priority is decoupling the architecture first; these findings are tackled afterwards, one by one, with TDD.
 
 Legend: **Effort** S (< 1 h), M (half a day). **Testable** means it can be pinned with a deterministic test using the existing harness: the real bank over HTTP, the `startLossyBank` proxy in `tests/support/network.ts`, and the fake OpenAI server in `tests/support/openai.ts`.
 
@@ -187,7 +187,11 @@ A secondary cause: configuration, health and logging were built for local develo
 ### P1-5. Default secrets silently used in production
 
 - **Category:** A02 / A05. Found by both reviews, then re-checked by the Phase 7d.4 review.
-- **Status: partly done.** `assertProductionSecrets(config, nodeEnv)` exists and is tested (`src/platform/config.ts:30-44`, `src/platform/config.test.ts:101`): in production it rejects an unset or shorter-than-32-character `BANK_SERVICE_SECRET`, `BANK_ADMIN_SECRET` and `SESSION_SECRET`. **Nothing calls it.** The only references are the definition and its test, so it protects nothing at startup. Not introduced by the refactor.
+- **Status: done** (`fix(platform): refuse to start in production with default secrets`). Before it, `assertProductionSecrets` existed and was tested but nothing called it, so it protected nothing at startup; not introduced by the refactor. Now:
+  - `localDefaultSecrets` (`src/platform/config.ts`) holds the three public values once; `loadConfig` falls back to them and `assertProductionSecrets` refuses them, so the two cannot drift apart. In production it rejects each of `BANK_SERVICE_SECRET`, `BANK_ADMIN_SECRET` and `SESSION_SECRET` when it is unset, shorter than 32 characters, or contains any of the three defaults, compared case-insensitively with `-`, `_`, `.` and spaces stripped (so a padded, upper-cased or re-separated default is caught), and it rejects one value reused across two or three of them (compared the same way), naming the variables that collide. The error names the variables, never the values. **Limit:** it does not measure entropy; a long low-entropy value such as `aaaa…` or `changeme…` passes.
+  - The root `instrumentation.ts` calls it from `register()`, the hook Next 16 runs once per server instance before it serves a request (`node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/instrumentation.md`; `guides/self-hosting.md` points to it for startup code). A throw alone is not enough: `next start` logs "Failed to prepare server", keeps listening and answers 500 to every request. So the hook logs one line, a fixed `Refusing to start in production:` prefix plus the error message (never the Error object or its stack), and exits 1; `scripts/dev.ts --production` (`npm start`) then stops the bank too. The import of the config sits inside the same `try`, so a config that fails to load also exits 1. In the built server webpack inlines `NODE_ENV` and `NEXT_RUNTIME` (checked in `.next*/server/instrumentation.js`), so a production build always runs the check in its Node.js runtime, whatever `NODE_ENV` `next start` sees; `next dev` builds with `development`, so `npm run dev` and the E2E stack (dev mode) keep the defaults. `next build` does not run `register`, so it needs no secrets. Only the tsx test run reads both variables from `process.env` when `register` runs.
+  - Tests: `src/platform/config.test.ts` (padded default in each secret, a default reused in another secret, an upper-cased and a re-separated default, one value reused across two secrets naming only those two, the 31/32-character boundary, the shared defaults, no value in the error) and `instrumentation.test.ts` (exit 1 and the names logged in production with defaults, as one plain prefixed line; no exit with real secrets, outside production or in the edge runtime). `.env.example` and `README.md` (production mode and Troubleshooting) say how to set the three secrets.
+  - Not covered here, still open: the bank simulator keeps its own fallback secrets (`simulator/` is out of scope, see `AGENTS.md`); the cookie `Secure` flag and token lifetime (P2-13); moving `adminSecret` out of the app's runtime config.
 - **Evidence:**
   - `src/platform/config.ts:14-16`: all three secrets fall back to the public values `banana-local-service`, `banana-local-admin` and `banana-local-session` when the variable is unset or empty. `.env.example:20-22` ships the same three values.
   - `config` is built at import (`src/platform/config.ts:27`) and never validated, so a production process with no environment starts, signs bank calls and issues sessions with the public values.
@@ -262,7 +266,7 @@ Missing: `intents(user_id, status)`, `intents(conversation_id)`, `approvals(inte
 
 ### P2-4. Configuration is read at import time
 
-`src/platform/config.ts` runs dotenv relative to the cwd at import (lines 3-4), and tests mutate `config.bankUrl` (`tests/support/network.ts`). **Partly done:** the pure `loadConfig(env)` factory (line 7) and `assertProductionSecrets` (line 30) now exist; `config` stays a mutable import-time singleton by design, and the P1-5 startup call is still missing. Effort S.
+`src/platform/config.ts` runs dotenv relative to the cwd at import (lines 3-4), and tests mutate `config.bankUrl` (`tests/support/network.ts`). **Partly done:** the pure `loadConfig(env)` factory and `assertProductionSecrets` exist, and the P1-5 startup call is done (root `instrumentation.ts`). Still open: dotenv still resolves `.env.local`/`.env` against the cwd at import; `config` stays a mutable import-time singleton by design. Effort S.
 
 ### P2-5. Retrieval cost
 
@@ -325,5 +329,5 @@ Found by the Phase 7d.4 security review; already in the starter. Neither is a fo
 
 1. P0-1 (unreadable response becomes `unknown`), P0-2 (`processing` in reconcile), P0-3 (customer-side reconcile + UI), P0-4 (pending-intent guard): one block, same root cause.
 2. P0-5 (Host allowlist), P0-6 (readable proposal card), P0-7 (lock the persona selector per environment; real authentication plus P2-13 is the real launch gate, and P2-14 and P2-15 ride with it).
-3. P1-5 (call `assertProductionSecrets` at startup; do it with P0-7 so a locked-down selector is not undone by a default secret), then P1-4, P1-2, P1-7, P1-8 (all S), then P1-1 and P1-3 (agent awareness; P1-3 overlaps a Part 2 "transfer tracker").
+3. P1-5 (done: `assertProductionSecrets` runs at startup; P0-7 still needs its own fix), then P1-4, P1-2, P1-7, P1-8 (all S), then P1-1 and P1-3 (agent awareness; P1-3 overlaps a Part 2 "transfer tracker").
 4. P2 as time allows; P2-2, P2-4 and P2-7 belong to the architecture decoupling.

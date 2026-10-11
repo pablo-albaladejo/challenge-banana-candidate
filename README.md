@@ -78,6 +78,8 @@ Existing installations: stop the services and run `npm run reset` to load the up
 
 For production mode, stop development services, run `npm run build`, then run `npm start`. Rebuild after changing application code. Development mode does not require a production build.
 
+Production mode needs real secrets. The `.env.example` values are public development defaults, and with them `npm start` exits with status 1 before serving anything. Set `SESSION_SECRET`, `BANK_SERVICE_SECRET` and `BANK_ADMIN_SECRET` (in `.env.local` or the environment) to three different random values of at least 32 characters, for example the output of `openssl rand -hex 32` run once per variable. The bank must use the same `BANK_SERVICE_SECRET` as the app: `npm start` passes its environment to both, so set it once. `npm run build` does not need them.
+
 Additional scenarios and contracts are in [contracts.md](docs/contracts.md). After changing ingestion code, run `npm run ingest`. After a reset, ingest again to restore your modified index. Changing embedding models requires regenerating the index.
 
 ## Project map
@@ -106,6 +108,8 @@ You may change the application and its organization. Preserve the observable con
 Save the complete challenge conversations from your chosen tools and put the original exports in `submission/ai-sessions/` or an optional `submission/ai-sessions.zip`. Include those files in the single delivery ZIP together with the complete project code for both parts and your video or alternative explanation. Use a native export or the relevant saved session files; you can ask your assistant to help collect and package them. Check that the exported files contain the full conversations, not a summary. Choose the format that works for you.
 
 ## Configuration and troubleshooting
+
+`Refusing to start in production: Set … to random values …` (or `… Give … different values …`) means production mode (`npm start` or `next start`) found one of `SESSION_SECRET`, `BANK_SERVICE_SECRET` or `BANK_ADMIN_SECRET` unset, shorter than 32 characters, based on a development default (case and `-`, `_`, `.`, space ignored), or equal to another of the three. The line names the variables, never their values. Set each listed variable to its own random value, for example `openssl rand -hex 32`, and start again. Development mode (`npm run dev`) keeps the defaults.
 
 Optional settings are in `.env.example`. To move the bank port, update both `BANK_PORT` and `BANK_URL`. `DATA_DIR` and `BANK_DATA_DIR` can separate storage; both default to `.data/`. For separate startup, use `npm run bank` in one terminal and `npx next dev --webpack --hostname 127.0.0.1 --port 3000` in another; both must share `BANK_SERVICE_SECRET`.
 
