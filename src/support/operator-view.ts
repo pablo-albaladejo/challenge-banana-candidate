@@ -1,7 +1,7 @@
 import { incidentById } from './incidents.repo';
 import { messagesIn } from '../conversations';
 import { eventsIn } from '../platform/telemetry/events.repo';
-import { intentsIn, reconcileIntent, unsettledIntentIds } from '../transfers';
+import { transfers } from '../transfers';
 import { HttpError } from '../platform/http/http-error';
 import { person } from '../identity';
 import { operatorCustomer } from '../platform/bank/bank';
@@ -20,12 +20,10 @@ export async function caseDetail(operatorId: string, id: string) {
     ...e,
     data: JSON.parse(e.data),
   }));
-  const pending = unsettledIntentIds(incident.conversation_id);
-  for (const { id: intentId } of pending) await reconcileIntent(incident.user_id, intentId);
-  const intents = intentsIn(incident.conversation_id).map((i) => ({
-    ...i,
-    payload: JSON.parse(i.payload),
-  }));
+  const intents = await transfers().getConversationTransfers({
+    userId: incident.user_id,
+    conversationId: incident.conversation_id,
+  });
   const gaps: string[] = [];
   if (!events.length) gaps.push('No agent activity was recorded for this conversation.');
   let bank: { operations: BankOperation[] } | null = null;

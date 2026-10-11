@@ -561,7 +561,7 @@ A pure move/rename refactor: no behaviour change, no logic edits, only import pa
 
 ## 10. Phase 7 — Hexagonal verticals with use cases and entry-point DI (plan, 2026-10-10)
 
-**Status: plan, approved design, critic review applied (§10.11); 7a done (shared kernel, `DomainError` mapping, error-text characterization pins, layer-rule scaffold with fire-proofs); 7b–7d not started.** A behaviour-preserving refactor in four sub-phases (7a, 7b, 7c, and 7d as five commits), on top of the Phase 6 tree. **All of Phase 7 lands before Part 2.** The design below was fixed by the user; this section grounds it in the code at `1832523` and resolves the places where the code and the design disagree (§10.10).
+**Status: plan, approved design, critic review applied (§10.11); 7a done (shared kernel, `DomainError` mapping, error-text characterization pins, layer-rule scaffold with fire-proofs); 7b done (transfers as a hexagonal vertical: domain, ports, services, use cases, adapters, `wireTransfers`/`transfers()`, frozen `legacy.ts`; dashboard and operator view call its use cases; `POST actions` moved to `assistant/http/run-action.ts`); 7c–7d not started.** A behaviour-preserving refactor in four sub-phases (7a, 7b, 7c, and 7d as five commits), on top of the Phase 6 tree. **All of Phase 7 lands before Part 2.** The design below was fixed by the user; this section grounds it in the code at `1832523` and resolves the places where the code and the design disagree (§10.10).
 
 ### 10.1 Rationale
 

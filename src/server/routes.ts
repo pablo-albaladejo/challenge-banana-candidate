@@ -12,8 +12,8 @@ import {
   listConversations,
   postMessage,
 } from '../conversations/http/conversations';
-import { runAction } from '../transfers/http/actions';
-import { confirmApproval } from '../transfers/http/approvals';
+import { runAction } from '../assistant/http/run-action';
+import { confirmApproval } from '../transfers';
 import { incidentDetail, listIncidents } from '../support/http/incidents';
 import { documentChunks, documentDetail, listDocuments } from '../knowledge/http/documents';
 import { previewAnswer } from '../assistant/http/preview-answer';

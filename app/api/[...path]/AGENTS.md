@@ -43,9 +43,9 @@ Defined in `src/server/routes.ts` (order mirrors the original if-chain; first ma
 
 - Session/actor (`src/identity/auth.ts`): cookie value is `userId.HMAC-SHA256(userId, config.sessionSecret)`; `actor()` verifies with `timingSafeEqual`, else `HttpError(401)`. `sessionSecret` defaults to `'banana-local-session'` if `SESSION_SECRET` is unset. There is no login: `POST session` accepts any known `userId`.
 - CSRF: `sameOrigin()` runs for every POST and only rejects when an `Origin` header exists and its host differs from `Host`. Requests without `Origin` pass.
-- Error mapping (`src/platform/http/errors.ts` `toErrorResponse`): `MissingOpenAIKeyError` -> 503 `{code:'missing_openai_api_key'}`; `HttpError`/`BankError` -> own status and message; `ZodError`/`SyntaxError` -> 400 `Invalid request data.`; anything else -> 500 generic message (logs only `e.name`).
+- Error mapping (`src/platform/http/errors.ts` `toErrorResponse`): `MissingOpenAIKeyError` -> 503 `{code:'missing_openai_api_key'}`; `HttpError`/`BankError` -> own status and message; any other `DomainError` -> `httpStatusOf(e)` (not_found 404, conflict 409, forbidden 403, bad_request 400, unavailable 502, a `BankFailure` its own status) and its message; `ZodError`/`SyntaxError` -> 400 `Invalid request data.`; anything else -> 500 generic message (logs only `e.name`).
 - Add a route as a row in `src/server/routes.ts` plus a handler in `src/<feature>/http/<resource>.ts` that checks the role explicitly, validates with its own zod schema, and throws `HttpError`. Next 16 passes `params` as a Promise; `handle()` awaits `context.params`.
-- Ownership is by SQL (`WHERE ... user_id=?`) or `conversationFor`; account ownership for transfers is checked in `src/transfers/authorization.ts`.
+- Ownership is by SQL (`WHERE ... user_id=?`) or `conversationFor`; account ownership for transfers is checked in `src/transfers/application/services/authorize-transfer.ts`.
 
 ### Testing Requirements
 
@@ -59,12 +59,12 @@ Defined in `src/server/routes.ts` (order mirrors the original if-chain; first ma
 
 ### Things worth scrutinizing
 
-- `approvals/{id}/confirm` (`src/transfers/http/approvals.ts`): selects the approval by id and user but does not check `consumed_at` or `expires_at` itself, and runs `transferMoney` on the stored payload; any single-use/expiry enforcement must live in `src/transfers/*`. Note `authorizeTransfer` currently always returns `null` (never `requires_confirmation`), so nothing in this repo path obviously creates approvals.
-- `actions` (`src/transfers/http/actions.ts`): `arguments` is `z.unknown()`; a client-supplied `intentId` is reused as the idempotency key. `overridePendingIntentId` is the customer's "send anyway": it goes into `ToolContext` (never the tool arguments, which the model controls and `transferSchema` rejects as unknown keys) and lifts a `requires_review` hold only when it names exactly the pending intent that hold reported; any other value is ignored and the hold stands. `search_documents` via `runTool` is called without the actor's role.
+- `approvals/{id}/confirm` (`src/transfers/entry-points/http/confirm-approval.ts`): selects the approval by id and user but does not check `consumed_at` or `expires_at` itself, and runs `transferMoney` on the stored payload; single-use and expiry are enforced by `authorizeTransfer` (the approval is consumed atomically, 409 when expired or used).
+- `actions` (`src/assistant/http/run-action.ts`): `arguments` is `z.unknown()`; a client-supplied `intentId` is reused as the idempotency key. `overridePendingIntentId` is the customer's "send anyway": it goes into `ToolContext` (never the tool arguments, which the model controls and `transferSchema` rejects as unknown keys) and lifts a `requires_review` hold only when it names exactly the pending intent that hold reported; any other value is ignored and the hold stands. `search_documents` via `runTool` is called without the actor's role.
 - `search` and `documents*`: authz depends on `actor.role`; `documents/{id}/chunks` is only role-filtered through `visible` (verify no internal chunk leak via `search`).
 - `preview-answer`: operator-only, but `sources` are fully client-supplied and fed to the model.
 - `session` POST: no credential check; cookie lacks `Secure`; weak default secret.
-- `dashboard` for operators returns all incidents; `incidents/{id}` is not scoped to an operator's assignment; `caseDetail` returns empty `history`/`events`/`intents`/`bank`.
+- `dashboard` for operators returns all incidents; `incidents/{id}` is not scoped to an operator's assignment; `caseDetail` fills `intents` through `transfers().getConversationTransfers` (unsettled ones reconciled with the bank first).
 - Auth runs after `health`/`people`/`session`, but GET requests skip `sameOrigin`.
 
 ## Dependencies

@@ -5,7 +5,7 @@
 import { Factory } from 'rosie';
 import { faker } from '@faker-js/faker';
 import { appDb } from '../../src/platform/db/db';
-import type { IntentRow, NewIntent } from '../../src/transfers/intents.repo';
+import type { IntentRow, NewIntent } from '../../src/transfers/domain/intent';
 import type {
   Chunk,
   DocumentRecord,
@@ -16,7 +16,7 @@ import type {
 import type { NewConversation } from '../../src/conversations/conversations.repo';
 import type { NewMessage } from '../../src/conversations/messages.repo';
 import type { NewRun } from '../../src/assistant/runs.repo';
-import type { NewApproval } from '../../src/transfers/approvals.repo';
+import type { NewApproval } from '../../src/transfers/domain/approval';
 import type { NewIncident } from '../../src/support/incidents.repo';
 import type { NewEvent } from '../../src/platform/telemetry/events.repo';
 import { accounts, conversations, customers, money } from './world';

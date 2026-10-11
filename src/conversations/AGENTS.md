@@ -38,7 +38,7 @@ A customer's chat threads and their messages: the `conversations` and `messages`
 ### Internal
 
 - `../platform` (`db/statement`, `http/`), `../assistant` (`sendMessage`, from `http/` only).
-- Consumed by `../assistant/conversation.ts`, `../support/operator-view.ts`, `../transfers/http/actions.ts` (`conversationFor`) and `../server/seed.ts`.
+- Consumed by `../assistant/conversation.ts`, `../support/operator-view.ts`, `../assistant/http/run-action.ts` (`conversationFor`) and `../server/seed.ts`.
 
 ### External
 

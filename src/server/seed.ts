@@ -5,7 +5,7 @@ import path from 'node:path';
 import { documents, restoreIndex } from '../knowledge';
 import { insertConversation, insertMessage } from '../conversations';
 import { insertIncident } from '../support';
-import { insertIntent } from '../transfers';
+import { insertIntent } from '../transfers/infrastructure/sqlite-intents.repo';
 export function seedApp() {
   const db = appDb();
   db.transaction(() => {
