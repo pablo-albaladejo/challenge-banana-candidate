@@ -2,7 +2,7 @@
 
 Evaluator entry point for the Banana Bank challenge ([`../docs/challenge.md`](../docs/challenge.md)). Project setup and troubleshooting: [`../README.md`](../README.md).
 
-**Status line.** Written against `main` at `ed1284b`. On `main`: every Part 1 fix in the table below (readiness P0-5 and P0-6 included), the architecture refactor, Part 2 commits 1–3 (piece B, transfer pre-flight checks) and the eval harness (base and per-metric gating). **Landing** (being integrated, finalised by Pablo after integration): Part 2 commits 4–6 (piece A, the verified case brief). **Not done:** Part 2 commit 7, the real-model case-brief eval: only its harness is on `main`, and no eval suite was run or reported. Rows marked _landing_ get their SHA when they reach `main`; nothing below reports a result that was not produced.
+**Status line.** Written against `main` at `0dbbf8b`. On `main`: every Part 1 fix in the table below (readiness P0-5 and P0-6 included), the architecture refactor, Part 2 commits 1–3 (piece B, transfer pre-flight checks) the eval harness (base and per-metric gating), and Part 2 commits 4–6 (piece A, the verified case brief: `7177876`, `dc389f6`, `5a855f3`, limits in `0dbbf8b`). **Not done:** Part 2 commit 7, the real-model case-brief eval: only its harness is on `main`, and no eval suite was run or reported. Nothing below reports a result that was not produced.
 
 ## Part 1 - Prepare for Monday
 
@@ -60,7 +60,7 @@ For the operator this turns a case from "read everything and hope" into a checke
 1. `npm ci`, `npm run setup`, then in `.env.local` set `MODEL_PROVIDER=auto` (without OpenAI credit, chat and the brief run on Claude Haiku via `claude -p`; needs the Claude Code CLI logged in).
 2. `npm run dev` and open `http://127.0.0.1:3000`.
 3. **Pre-flight checks.** Top right, in **VIEW AS**, pick **Lucía Martín**. Open **Assistant**, start a conversation and write `Send 200 EUR to Bruno Vidal for rent`. Under **Proposals awaiting confirmation** the card shows **Pre-flight checks** (balance after, unusual amount). Then write `Actually, send 5000 EUR to Bruno Vidal for rent`: a blocker and the button **Confirm these details anyway**. Do not confirm.
-4. **Verified brief** _(landing: commits 4–6)_. In **VIEW AS**, pick **Marta Sanz · Operator**, open **Cases** and the case "Could someone check the dinner payment with Bruno when available?". Press **Generate brief**: the assistant's "I could not complete the transfer" is **Contradicted**, and a blocker finding _Retry advice on a completed payment_ cites `[procedure-3 v2]`.
+4. **Verified brief**. In **VIEW AS**, pick **Marta Sanz · Operator**, open **Cases** and the case "Could someone check the dinner payment with Bruno when available?". Press **Generate brief**: the assistant's "I could not complete the transfer" is **Contradicted**, and a blocker finding _Retry advice on a completed payment_ cites `[procedure-3 v2]`.
 5. **Send and close.** In **Reply to send**, add `We will refund EUR 90 today.` and press **Send and close**: the send stops and flags EUR 90. Tick the responsibility checkbox and send again; the case becomes **Resolved**. Switch back to Lucía: her **Dinner payment** conversation ends with a message from **Banana Bank support · Marta**.
 
 The full click path, including the degraded brief without a model, is in [`video-script.md`](video-script.md).
@@ -72,9 +72,9 @@ The full click path, including the degraded brief without a model, is in [`video
 | 1   | `a8c5d8d` policy rules table, drift guard, prompt fence                | On `main`                                 |
 | 2   | `df4cc7a` pre-flight checks on proposals (hardened in `8b5769e`)       | On `main`                                 |
 | 3   | `72409f1` pre-flight checks on the approval card                       | On `main`; e2e journey B                  |
-| 4   | Deterministic case brief: timeline, claim oracle, findings, procedures | _Landing_                                 |
-| 5   | Operator reply closes the case and reaches the customer                | _Landing_                                 |
-| 6   | Model-written brief: claim extraction, writing call, post-check        | _Landing_                                 |
+| 4   | Deterministic case brief: timeline, claim oracle, findings, procedures | `7177876`                                 |
+| 5   | Operator reply closes the case and reaches the customer                | `dc389f6`                                 |
+| 6   | Model-written brief: claim extraction, writing call, post-check        | `5a855f3`                                 |
 | 7   | Real-model case-brief eval (L5)                                        | Harness on `main` (`dc39816`, `885ddf8`); suite and report **not done** |
 
 ## Verified / not verified
