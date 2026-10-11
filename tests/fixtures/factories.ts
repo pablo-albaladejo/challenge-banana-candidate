@@ -15,7 +15,7 @@ import type {
 } from '../../src/types';
 import type { NewConversation } from '../../src/conversations/conversations.repo';
 import type { NewMessage } from '../../src/conversations/messages.repo';
-import type { NewRun } from '../../src/assistant/runs.repo';
+import type { NewRun } from '../../src/assistant/application/ports/run-repository';
 import type { NewApproval } from '../../src/transfers/domain/approval';
 import type { NewIncident } from '../../src/support/incidents.repo';
 import type { NewEvent } from '../../src/platform/telemetry/events.repo';

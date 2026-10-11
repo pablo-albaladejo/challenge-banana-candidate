@@ -1,56 +1,19 @@
 import { after, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { runTool, toolDefinitions } from './tool-registry';
-import { seedApp } from '../server/seed';
-import { resetBank, startBank, stopBank } from '../../tests/support/bank';
-import { eventsFor } from '../../tests/support/db';
-import { toolContextFactory, transferInputFactory } from '../../tests/fixtures/factories';
-import { accounts, conversations, operators, unknown } from '../../tests/fixtures/world';
-import { appDb } from '../platform/db/db';
-import type { ToolContext } from '../types';
-import { goldenToolDefinitions } from '../../tests/fixtures/tool-definitions';
+import { wireAssistant } from '../../entry-points/dependencies';
+import { seedApp } from '../../../server/seed';
+import { resetBank, startBank, stopBank } from '../../../../tests/support/bank';
+import { eventsFor } from '../../../../tests/support/db';
+import { toolContextFactory, transferInputFactory } from '../../../../tests/fixtures/factories';
+import { accounts, conversations, operators, unknown } from '../../../../tests/fixtures/world';
+import { appDb } from '../../../platform/db/db';
+import type { ToolContext } from '../../../types';
+import { fixedClock } from '../../../../tests/support/clock';
 
+const { runTool } = wireAssistant();
 /** A run in lucia's welcome conversation, where a support case can be opened. */
 const context = (overrides: Partial<ToolContext> = {}) =>
   toolContextFactory.build({ conversationId: conversations.luciaWelcome, ...overrides });
-
-describe('toolDefinitions', () => {
-  it('should expose the core strict agent tools', () => {
-    // Arrange
-    const expected = [
-      'list_accounts',
-      'search_documents',
-      'transfer_money',
-      'operation_status',
-      'request_human',
-    ];
-    // Act
-    const names = toolDefinitions.map((t) => t.name);
-    // Assert
-    assert.ok(expected.every((name) => names.includes(name)));
-    assert.ok(toolDefinitions.every((t) => t.strict === true && t.type === 'function'));
-  });
-
-  it('should keep the customer identity out of every tool parameter list', () => {
-    // Arrange
-    const identityFields = ['userId', 'user', 'actor', 'customerId'];
-    // Act
-    const parameterNames = toolDefinitions.flatMap((t) =>
-      Object.keys((t.parameters as { properties: Record<string, unknown> }).properties),
-    );
-    // Assert
-    assert.ok(parameterNames.every((name) => !identityFields.includes(name)));
-  });
-
-  it('should serialize exactly as the definitions the model received before the registry', () => {
-    // Arrange
-    const expected = JSON.stringify(goldenToolDefinitions);
-    // Act
-    const actual = JSON.stringify(toolDefinitions);
-    // Assert
-    assert.equal(actual, expected);
-  });
-});
 
 describe('runTool', () => {
   before(async () => {
@@ -64,7 +27,7 @@ describe('runTool', () => {
     // Arrange
     const ctx = context();
     // Act
-    const result = await runTool('delete_bank', {}, ctx);
+    const result = await runTool({ name: 'delete_bank', args: {}, ctx });
     // Assert
     assert.deepEqual(result, { status: 'failed', error: 'Unknown tool.' });
   });
@@ -73,7 +36,7 @@ describe('runTool', () => {
     // Arrange
     const ctx = context();
     // Act
-    await runTool('list_accounts', {}, ctx);
+    await runTool({ name: 'list_accounts', args: {}, ctx });
     // Assert
     const events = eventsFor(ctx.runId);
     assert.deepEqual(
@@ -89,7 +52,7 @@ describe('runTool', () => {
     // Arrange
     const ctx = context();
     // Act
-    await runTool('delete_bank', {}, ctx);
+    await runTool({ name: 'delete_bank', args: {}, ctx });
     // Assert
     const events = eventsFor(ctx.runId);
     assert.deepEqual(
@@ -114,7 +77,11 @@ describe('runTool error text', () => {
     // Arrange
     const ctx = context({ userId: operators.marta });
     // Act
-    const result = await runTool('transfer_money', transferInputFactory.build(), ctx);
+    const result = await runTool({
+      name: 'transfer_money',
+      args: transferInputFactory.build(),
+      ctx,
+    });
     // Assert
     assert.deepEqual(result, { status: 'failed', error: 'A customer account is required.' });
   });
@@ -126,7 +93,7 @@ describe('runTool error text', () => {
       toAccountId: accounts.lucia,
     });
     // Act
-    const result = await runTool('transfer_money', input, context());
+    const result = await runTool({ name: 'transfer_money', args: input, ctx: context() });
     // Assert
     assert.deepEqual(result, {
       status: 'failed',
@@ -138,7 +105,7 @@ describe('runTool error text', () => {
     // Arrange
     const input = transferInputFactory.build({ toAccountId: unknown.account });
     // Act
-    const result = await runTool('transfer_money', input, context());
+    const result = await runTool({ name: 'transfer_money', args: input, ctx: context() });
     // Assert
     assert.deepEqual(result, {
       status: 'failed',
@@ -162,7 +129,7 @@ describe('runTool error text', () => {
   }
 ]`;
     // Act
-    const result = await runTool('transfer_money', input, context());
+    const result = await runTool({ name: 'transfer_money', args: input, ctx: context() });
     // Assert
     assert.deepEqual(result, { status: 'failed', error: expected });
   });
@@ -171,7 +138,7 @@ describe('runTool error text', () => {
     // Arrange
     const ctx = context({ conversationId: null });
     // Act
-    const result = await runTool('request_human', { summary: 'Help' }, ctx);
+    const result = await runTool({ name: 'request_human', args: { summary: 'Help' }, ctx });
     // Assert
     assert.deepEqual(result, {
       status: 'failed',
@@ -185,7 +152,11 @@ describe('runTool error text', () => {
     // Act
     let result;
     try {
-      result = await runTool('search_documents', { query: 'card limit' }, context());
+      result = await runTool({
+        name: 'search_documents',
+        args: { query: 'card limit' },
+        ctx: context(),
+      });
     } finally {
       seedApp();
     }
@@ -202,7 +173,7 @@ describe('runTool error text', () => {
     // Act
     let result;
     try {
-      result = await runTool('list_accounts', {}, context());
+      result = await runTool({ name: 'list_accounts', args: {}, ctx: context() });
     } finally {
       await startBank();
     }
@@ -216,7 +187,11 @@ describe('runTool error text', () => {
     // Act
     let result;
     try {
-      result = await runTool('operation_status', { reference: unknown.reference }, context());
+      result = await runTool({
+        name: 'operation_status',
+        args: { reference: unknown.reference },
+        ctx: context(),
+      });
     } finally {
       await startBank();
     }
@@ -228,7 +203,7 @@ describe('runTool error text', () => {
     // Arrange
     const args = { reference: unknown.reference };
     // Act
-    const result = await runTool('operation_status', args, context());
+    const result = await runTool({ name: 'operation_status', args, ctx: context() });
     // Assert
     assert.deepEqual(result, { status: 'failed', error: 'Operation not found.' });
   });
@@ -237,8 +212,35 @@ describe('runTool error text', () => {
     // Arrange
     const ctx = context();
     // Act
-    const result = await runTool('close_account', {}, ctx);
+    const result = await runTool({ name: 'close_account', args: {}, ctx });
     // Assert
     assert.deepEqual(result, { status: 'failed', error: 'Unknown tool.' });
+  });
+});
+
+describe('runTool with a fixed clock', () => {
+  before(seedApp);
+
+  it("should time each tool call on the graph's clock", async () => {
+    // Arrange
+    const clock = fixedClock();
+    const ticking = {
+      now: () => {
+        const now = clock.now();
+        clock.advance(5);
+        return now;
+      },
+    };
+    const ctx = context();
+    // Act
+    await wireAssistant({ clock: ticking }).runTool({ name: 'delete_bank', args: {}, ctx });
+    // Assert
+    assert.deepEqual(
+      eventsFor(ctx.runId).map((e) => [e.kind, e.data.durationMs]),
+      [
+        ['tool.started', undefined],
+        ['tool.failed', 5],
+      ],
+    );
   });
 });

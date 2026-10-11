@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import { HttpError } from '../../platform/http/http-error';
-import { answerWithEvidence } from '../evidence';
-import { json } from '../../platform/http/respond';
-import type { Handler } from '../../platform/http/context';
+import { HttpError } from '../../../platform/http/http-error';
+import { assistant } from '../dependencies';
+import { json } from '../../../platform/http/respond';
+import type { Handler } from '../../../platform/http/context';
 const previewSchema = z.object({
   question: z.string().min(1).max(8000),
   sources: z
@@ -25,5 +25,5 @@ const previewSchema = z.object({
 export const previewAnswer: Handler = async ({ request, actor }) => {
   if (actor.role !== 'operator') throw new HttpError(403, 'Operator role required.');
   const body = previewSchema.parse(await request.json());
-  return json(await answerWithEvidence(body.question, body.sources));
+  return json(await assistant().previewAnswer(body));
 };

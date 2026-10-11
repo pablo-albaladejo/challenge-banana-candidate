@@ -6,6 +6,7 @@ import { seedApp } from '../../../src/server/seed';
 import { appDb } from '../../../src/platform/db/db';
 import { sessionToken } from '../../../src/identity/auth';
 import { documents } from '../../../src/knowledge/ingestion/pipeline';
+import { assistant } from '../../../src/assistant';
 import { api } from '../../../tests/support/api';
 import {
   balanceOf,
@@ -573,6 +574,26 @@ describe('POST /api/conversations/:id/messages', () => {
     // Assert
     assert.equal(result.status, 404);
     assert.equal(fake.requests.length, 0);
+  });
+
+  it('should ask to wait while the assistant is still answering in the conversation', async () => {
+    // Arrange
+    const conversationId = conversations.luciaWelcome;
+    fake.script(reply('First answer.'));
+    const first = assistant().sendMessage({
+      userId: customers.lucia,
+      conversationId,
+      content: 'First',
+    });
+    // Act
+    const result = await api('POST', `conversations/${conversationId}/messages`, {
+      as: customers.lucia,
+      body: { content: 'Second' },
+    });
+    // Assert
+    await first;
+    assert.equal(result.status, 409);
+    assert.deepEqual(result.body, { error: 'Wait for the previous response to finish.' });
   });
 
   it('should answer a provider failure with 502 and the provider message', async () => {

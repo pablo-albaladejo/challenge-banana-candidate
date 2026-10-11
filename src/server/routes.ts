@@ -10,13 +10,11 @@ import {
   conversationDetail,
   createConversation,
   listConversations,
-  postMessage,
 } from '../conversations/http/conversations';
-import { runAction } from '../assistant/http/run-action';
 import { confirmApproval } from '../transfers';
 import { incidentDetail, listIncidents } from '../support/http/incidents';
 import { documentChunks, documentDetail, listDocuments } from '../knowledge/http/documents';
-import { previewAnswer } from '../assistant/http/preview-answer';
+import { postMessage, previewAnswer, runAction } from '../assistant';
 import { search } from '../knowledge/http/search';
 import { runIngestion } from '../knowledge/http/ingestion';
 /** Answered before the actor is resolved: no session needed. */

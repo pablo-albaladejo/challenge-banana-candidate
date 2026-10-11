@@ -1,9 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { faker } from '@faker-js/faker';
-import { insertRun, setRunStatus } from './runs.repo';
-import { runFactory } from '../../tests/fixtures/factories';
-import { runOf } from '../../tests/support/db';
+import { insertRun, setRunStatus } from './sqlite-runs.repo';
+import { runFactory } from '../../../tests/fixtures/factories';
+import { runOf } from '../../../tests/support/db';
 
 describe('runs repository', () => {
   it('should read back a stored run', () => {

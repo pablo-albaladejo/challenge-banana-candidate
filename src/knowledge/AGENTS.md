@@ -26,7 +26,7 @@ The bank's document corpus as searchable knowledge: ingestion (read the corpus i
 
 ### Working In This Directory
 
-- Index lives in app DB tables `chunks`, `embedding_cache`, `meta` (not the bank DB). `search/store.ts` and `search/embeddings.ts` are the only owners of that SQL. Callers: `../assistant/conversation.ts`, `tools/search-documents.tool.ts`, `ingestion/pipeline.ts`, `../server/seed.ts` (`restoreIndex`, `documents`), the `http/` handlers.
+- Index lives in app DB tables `chunks`, `embedding_cache`, `meta` (not the bank DB). `search/store.ts` and `search/embeddings.ts` are the only owners of that SQL. Callers: `../assistant/entry-points/dependencies.ts` (the `KnowledgePort`), `tools/search-documents.tool.ts`, `ingestion/pipeline.ts`, `../server/seed.ts` (`restoreIndex`, `documents`), the `http/` handlers.
 - Triggered by `npm run ingest` / `npm run setup` (scripts in `scripts/`); the seed can instead restore the committed index without calling OpenAI. Ingest is a full replace in one transaction (`replaceChunks`); embeddings are cached in `embedding_cache` by model+dimensions+text.
 - Vectors are assumed normalized, so dot product = cosine; there is no ANN index (full scan on every query).
 - Things worth scrutinizing:

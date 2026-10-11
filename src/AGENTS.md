@@ -21,7 +21,7 @@ Application core, imported by the Next.js catch-all route (`app/api/[...path]/ro
 | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `transfers/`                                     | Transfer workflow as a hexagonal vertical (`domain/`, `application/`, `infrastructure/`, `entry-points/`): intents, approvals, authorization, dispatch, reconcile; `transfer_money` and `operation_status` tools; the `approvals/:id/confirm` endpoint (see `transfers/AGENTS.md`) |
 | `accounts/`                                      | Customer dashboard and the `list_accounts` tool (see `accounts/AGENTS.md`)                                                                                                                                                                                                         |
-| `assistant/`                                     | Conversation, model ↔ tool loop, prompt, tool registry, runs; `preview-answer` endpoint (see `assistant/AGENTS.md`)                                                                                                                                                                |
+| `assistant/`                                     | Hexagonal: send message, model ↔ tool loop, prompt, tool catalog, runs; `messages`, `actions` and `preview-answer` endpoints (see `assistant/AGENTS.md`)                                                                                                                           |
 | `conversations/`                                 | Conversations and messages: repos and endpoints (see `conversations/AGENTS.md`)                                                                                                                                                                                                    |
 | `knowledge/`                                     | Ingestion, embeddings, vector store, search; `search_documents` tool; `search`, `documents`, `ingestion` endpoints (see `knowledge/AGENTS.md`)                                                                                                                                     |
 | `support/`                                       | Support cases and the operator case view; `request_human` tool; `incidents` endpoints (see `support/AGENTS.md`)                                                                                                                                                                    |
@@ -35,20 +35,20 @@ Application core, imported by the Next.js catch-all route (`app/api/[...path]/ro
 
 `public-surface.test.ts` freezes these import paths for the simulator, scripts and external checks. Each is a thin `export *` (or named) re-export of the module's new home, so the exported names and object identities are unchanged (`config` stays the same mutable object). No application code imports them; new code imports the new paths.
 
-| Frozen path               | Re-exports                                                     |
-| ------------------------- | -------------------------------------------------------------- |
-| `config.ts`               | `platform/config.ts`                                           |
-| `db.ts`                   | `platform/db/db.ts`                                            |
-| `seed.ts`                 | `server/seed.ts`                                               |
-| `auth.ts`                 | `identity/auth.ts`                                             |
-| `people.ts`               | `identity/people.ts`                                           |
-| `banking/client.ts`       | `platform/bank/client.ts`                                      |
-| `banking/actions.ts`      | `transfers/entry-points/legacy.ts` (through `../transfers`)    |
-| `ingestion/pipeline.ts`   | `knowledge/ingestion/pipeline.ts`                              |
-| `retrieval/store.ts`      | `knowledge/search/store.ts`                                    |
-| `retrieval/embeddings.ts` | `knowledge/search/embeddings.ts`                               |
-| `agent/run.ts`            | `sendMessage`, `answerWithEvidence` from `assistant/`          |
-| `agent/tools.ts`          | `toolDefinitions`, `runTool` from `assistant/tool-registry.ts` |
+| Frozen path               | Re-exports                                                  |
+| ------------------------- | ----------------------------------------------------------- |
+| `config.ts`               | `platform/config.ts`                                        |
+| `db.ts`                   | `platform/db/db.ts`                                         |
+| `seed.ts`                 | `server/seed.ts`                                            |
+| `auth.ts`                 | `identity/auth.ts`                                          |
+| `people.ts`               | `identity/people.ts`                                        |
+| `banking/client.ts`       | `platform/bank/client.ts`                                   |
+| `banking/actions.ts`      | `transfers/entry-points/legacy.ts` (through `../transfers`) |
+| `ingestion/pipeline.ts`   | `knowledge/ingestion/pipeline.ts`                           |
+| `retrieval/store.ts`      | `knowledge/search/store.ts`                                 |
+| `retrieval/embeddings.ts` | `knowledge/search/embeddings.ts`                            |
+| `agent/run.ts`            | `sendMessage`, `answerWithEvidence` from `assistant/`       |
+| `agent/tools.ts`          | `toolDefinitions`, `runTool` from `assistant/`              |
 
 ## For AI Agents
 
@@ -56,13 +56,13 @@ Application core, imported by the Next.js catch-all route (`app/api/[...path]/ro
 
 - **Dependency rules** (enforced in `eslint.config.mjs`; `npm run lint` fails on a violation):
   - Features depend on `platform/` (any file inside it). `platform/` is the bottom layer: it imports no feature and not `server/`, statically or with `import()`; it may import `shared/`, which imports nothing outside itself.
-  - **Vertical rank** (plan §10.1): `identity`, `knowledge`, `conversations` 0; `transfers` 1; `support` 2; `accounts` 3; `assistant` 4. A vertical value-imports only verticals of a lower rank; `import type` of any rank is allowed (erased). The one current exception, `conversations/http/conversations.ts` importing `assistant`, carries an `eslint-disable-next-line` deleted when 7c moves that handler to `assistant`; 7b moved `POST actions` to `assistant/http/run-action.ts` and deleted its comment.
+  - **Vertical rank** (plan §10.1): `identity`, `knowledge`, `conversations` 0; `transfers` 1; `support` 2; `accounts` 3; `assistant` 4. A vertical value-imports only verticals of a lower rank; `import type` of any rank is allowed (erased). There are no exceptions and no `eslint-disable` in `src/`: 7b moved `POST actions` and 7c `POST conversations/:id/messages` into `assistant/entry-points/http/`.
   - **Layer rules** (Phase 7 scaffold, active for the new folders `<v>/{domain,application,infrastructure,entry-points}/` and `<v>/index.ts`): `domain/` imports only its own vertical, `shared/domain` and `types`, and stays pure (no `Date.now()`, zero-argument `new Date()`, `Math.random()`, `crypto` global or I/O packages; `node:crypto` only for `createHash`); `application/` adds `shared/` and `openai` types, never `platform/`, infrastructure, entry-points or another vertical; `infrastructure/` imports `platform/`, `shared/` and its own ports and domain, never use cases, services or another vertical; `entry-points/dependencies.ts` and `legacy.ts` wire their vertical; other entry-points never import services or infrastructure and take port types only; `index.ts` re-exports `./entry-points/` (until 7d it may still re-export today's flat files, never the layer folders). Today's flat files keep the Phase 6 rules plus the rank.
   - A feature imports another feature only through its `index.ts` (`'../transfers'` or `'../transfers/index.ts'`, never `'../transfers/reconcile'`), statically or with `import()`. Inside a feature, import relatively.
   - `server/` is the composition root: the only module that deep-imports feature internals (the `http/` handlers, which no `index.ts` exports). No feature imports `server/` outside tests (feature tests may call `server/seed`); nothing in `app/`, `scripts/` or `tests/` imports a feature's `http/`.
   - Nothing under `src/` (outside the shims themselves) imports a frozen shim (`../config`, `../agent/...`, ...) or the `@/src/` alias.
-  - Each feature owns its agent tools (`<feature>/tools/<name>.tool.ts`, exported through its `index.ts`); `assistant/tool-registry.ts` assembles them. A tool takes only types from `assistant` (`import type { Tool }`), enforced by the rank rule (core `no-restricted-imports` with `allowTypeImports`).
-- **No runtime import cycles.** The tool registry imports the tools of `accounts`, `knowledge`, `transfers` and `support`; the tools import the `Tool` type back, which TypeScript erases, so there is no runtime edge from a tool to `assistant`. `conversations` keeps `conversationFor` in `ownership.ts`, so `conversations/index.ts` loads only its repos and never reaches `assistant`, the registry or the model gateway; the feature `http/` handlers are loaded only by `server/routes.ts`. Keep it that way: a value import from a tool to `assistant`, or from an `index.ts` to its own `http/`, would bring the cycle back.
+  - Each feature owns its agent tools (`<feature>/tools/<name>.tool.ts`, exported through its `index.ts`); `assistant/entry-points/tools/catalog.ts` assembles them. A tool takes only types from `assistant` (`import type { Tool }`), enforced by the rank rule (core `no-restricted-imports` with `allowTypeImports`).
+- **No runtime import cycles.** The assistant's tool catalog imports the tools of `accounts`, `knowledge`, `transfers` and `support`; the tools import the `Tool` type back, which TypeScript erases, so there is no runtime edge from a tool to `assistant`. `conversations` keeps `conversationFor` in `ownership.ts`, so `conversations/index.ts` loads only its repos and never reaches `assistant`, the catalog or the model gateway; the feature `http/` handlers are loaded only by `server/routes.ts`. Keep it that way: a value import from a tool to `assistant`, or from an `index.ts` to its own `http/`, would bring the cycle back.
 - Identity comes only from the signed cookie via `actor()`; never trust a user id from the body or headers.
 - Repos (`*.repo.ts`) prepare through `platform/db/statement.ts`, which compiles each SQL text once per connection. Its `atomically(step)` runs a synchronous step as one `BEGIN IMMEDIATE` transaction (rolled back if it throws); `authorizeTransfer` uses it to check twins, consume the approval and claim `processing` in one step.
 - Intent status changes go only through `transfers/application/services/transition-intent.ts`, a compare-and-set that rejects edges outside `TRANSITIONS` (`IllegalTransitionError`); `UPDATE intents` appears only in `transfers/infrastructure/sqlite-intents.repo.ts`.
@@ -80,7 +80,7 @@ Application core, imported by the Next.js catch-all route (`app/api/[...path]/ro
 
 ### Common Patterns
 
-- Errors surface as `HttpError(status, message)` (`platform/http/http-error.ts`, re-exported by `identity`); `platform/http/errors.ts` maps them to JSON. From Phase 7, business rules throw a `shared/domain` `DomainError` instead (no status): `toErrorResponse` answers it with `httpStatusOf(e)` and the same message, and `toLegacyError` turns it back into `HttpError`/`BankError` for the frozen-signature functions. The exact HTTP and tool error texts are pinned by `route.test.ts` and `assistant/tool-registry.test.ts` (`runTool error text`); `import-graph.test.ts` checks there is no value-import cycle.
+- Errors surface as `HttpError(status, message)` (`platform/http/http-error.ts`, re-exported by `identity`); `platform/http/errors.ts` maps them to JSON. From Phase 7, business rules throw a `shared/domain` `DomainError` instead (no status): `toErrorResponse` answers it with `httpStatusOf(e)` and the same message, and `toLegacyError` turns it back into `HttpError`/`BankError` for the frozen-signature functions. The exact HTTP and tool error texts are pinned by `route.test.ts` and `assistant/application/use-cases/run-tool.test.ts` (`runTool error text`); `import-graph.test.ts` checks there is no value-import cycle.
 - Prepared statements with named-column inserts (`INSERT INTO t(col,...) VALUES(...)`), owned by the repo of each table; timestamps are ISO strings from `new Date().toISOString()`.
 
 ## Dependencies

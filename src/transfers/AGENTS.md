@@ -5,7 +5,7 @@
 
 ## Purpose
 
-The app-side transfer workflow: every attempt is an `intents` row in the app DB, authorized against the bank, dispatched once under a stable bank reference, and reconciled with the bank when the outcome is ambiguous. Owns the `transfer_money` and `operation_status` agent tools and the `approvals/:id/confirm` endpoint. `POST /api/actions` is served by `assistant/http/run-action.ts` (moved in 7b; it lands in `assistant/entry-points/http/` in 7c); the URL did not change.
+The app-side transfer workflow: every attempt is an `intents` row in the app DB, authorized against the bank, dispatched once under a stable bank reference, and reconciled with the bank when the outcome is ambiguous. Owns the `transfer_money` and `operation_status` agent tools and the `approvals/:id/confirm` endpoint. `POST /api/actions` is served by `assistant/entry-points/http/run-action.ts` (moved in 7b, layered in 7c); the URL did not change.
 
 Hexagonal vertical (plan §10): `domain/` (pure rules), `application/` (ports, services, use cases), `infrastructure/` (adapters), `entry-points/` (wiring, tools, http, the frozen legacy surface). Nothing else lives at the root but `index.ts` and this file.
 
@@ -72,7 +72,7 @@ Hexagonal vertical (plan §10): `domain/` (pure rules), `application/` (ports, s
 ### Internal
 
 - `../shared` (`DomainError`s, `BankFailure`, `Clock`, `Ids`, `UnitOfWork`), `../platform` (adapters and wiring only: `bank/`, `db/statement`, `telemetry/`, `config`, `runtime`, `http/`), `../identity` (`person`, wiring only), `../assistant` (`Tool` type only), `../types`.
-- Consumed by `../assistant/tool-registry.ts` (tools), `../accounts/http/dashboard.ts` (`listPendingTransfers`, `listLiveProposals`), `../support/operator-view.ts` (`getConversationTransfers`), `../server/routes.ts` (`confirmApproval`), `../server/seed.ts` (`infrastructure/sqlite-intents.repo`) and `../banking/actions.ts` (frozen shim).
+- Consumed by `../assistant/entry-points/tools/catalog.ts` (tools), `../accounts/http/dashboard.ts` (`listPendingTransfers`, `listLiveProposals`), `../support/operator-view.ts` (`getConversationTransfers`), `../server/routes.ts` (`confirmApproval`), `../server/seed.ts` (`infrastructure/sqlite-intents.repo`) and `../banking/actions.ts` (frozen shim).
 
 ### External
 

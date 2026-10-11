@@ -1,10 +1,15 @@
 import { after, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { answerWithEvidence } from './evidence';
-import { reply, startFakeOpenAI, type FakeOpenAI } from '../../tests/support/openai';
-import { searchResultFactory } from '../../tests/fixtures/factories';
-import { knowledgeInstructions } from './prompt';
-import { config } from '../platform/config';
+import { wireAssistant } from '../../entry-points/dependencies';
+import { reply, startFakeOpenAI, type FakeOpenAI } from '../../../../tests/support/openai';
+import { searchResultFactory } from '../../../../tests/fixtures/factories';
+import { knowledgeInstructions } from '../../domain/prompt';
+import { config } from '../../../platform/config';
+import type { SearchResult } from '../../../types';
+
+const { previewAnswer } = wireAssistant();
+const answerWithEvidence = (question: string, sources: SearchResult[]) =>
+  previewAnswer({ question, sources });
 
 describe('answerWithEvidence', () => {
   let fake: FakeOpenAI;

@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { HttpError } from '../../platform/http/http-error';
-import { runTool } from '../tool-registry';
-import { conversationFor } from '../../conversations';
-import { json } from '../../platform/http/respond';
-import type { Handler } from '../../platform/http/context';
+import { HttpError } from '../../../platform/http/http-error';
+import { assistant } from '../dependencies';
+import { conversationFor } from '../../../conversations';
+import { json } from '../../../platform/http/respond';
+import type { Handler } from '../../../platform/http/context';
 const actionSchema = z.object({
   name: z.enum([
     'transfer_money',
@@ -31,5 +31,5 @@ export const runAction: Handler = async ({ request, actor }) => {
     intentId: body.intentId || randomUUID(),
     overridePendingIntentId: body.overridePendingIntentId,
   };
-  return json(await runTool(body.name, body.arguments, ctx));
+  return json(await assistant().runTool({ name: body.name, args: body.arguments, ctx }));
 };

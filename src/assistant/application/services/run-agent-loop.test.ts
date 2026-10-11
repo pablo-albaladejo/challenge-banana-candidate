@@ -1,15 +1,22 @@
 import { after, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { maxRounds, runLoop } from './loop';
-import { seedApp } from '../server/seed';
-import { resetBank, startBank, stopBank } from '../../tests/support/bank';
-import { approvalsFor, eventsFor, intentRow } from '../../tests/support/db';
-import { reply, startFakeOpenAI, toolCall, type FakeOpenAI } from '../../tests/support/openai';
-import { toolContextFactory, transferInputFactory } from '../../tests/fixtures/factories';
-import { conversations } from '../../tests/fixtures/world';
-import { goldenToolDefinitions } from '../../tests/fixtures/tool-definitions';
-import { config } from '../platform/config';
+import { wireAssistant } from '../../entry-points/dependencies';
+import { maxRounds } from '../../domain/run-policy';
+import { seedApp } from '../../../server/seed';
+import { resetBank, startBank, stopBank } from '../../../../tests/support/bank';
+import { approvalsFor, eventsFor, intentRow } from '../../../../tests/support/db';
+import {
+  reply,
+  startFakeOpenAI,
+  toolCall,
+  type FakeOpenAI,
+} from '../../../../tests/support/openai';
+import { toolContextFactory, transferInputFactory } from '../../../../tests/fixtures/factories';
+import { conversations } from '../../../../tests/fixtures/world';
+import { goldenToolDefinitions } from '../../../../tests/fixtures/tool-definitions';
+import { config } from '../../../platform/config';
 
+const runLoop = wireAssistant().internals.runAgentLoop;
 /** A run in lucia's welcome conversation; the loop derives each tool call's intent from it. */
 const run = () => {
   const { userId, conversationId, runId } = toolContextFactory.build({
