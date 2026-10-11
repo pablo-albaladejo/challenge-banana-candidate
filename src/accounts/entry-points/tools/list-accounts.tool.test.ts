@@ -1,11 +1,11 @@
 import { after, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { runTool } from '../../assistant';
-import { seedApp } from '../../server/seed';
-import { resetBank, startBank, stopBank } from '../../../tests/support/bank';
-import { toolContextFactory } from '../../../tests/fixtures/factories';
-import type { Account, ToolContext } from '../../types';
-import { accounts, conversations, customers } from '../../../tests/fixtures/world';
+import { runTool } from '../../../assistant';
+import { seedApp } from '../../../server/seed';
+import { resetBank, startBank, stopBank } from '../../../../tests/support/bank';
+import { toolContextFactory } from '../../../../tests/fixtures/factories';
+import type { Account, ToolContext } from '../../../types';
+import { accounts, conversations, customers } from '../../../../tests/fixtures/world';
 
 /** A run in lucia's welcome conversation, where a support case can be opened. */
 const context = (overrides: Partial<ToolContext> = {}) =>

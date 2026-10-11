@@ -20,8 +20,16 @@ const rank = {
   assistant: 4,
 };
 const up = (depth) => '\\.\\./'.repeat(depth);
-/** Verticals already split into layers (7b, 7c, 7d.1, 7d.2, 7d.3, 7d.4): index-only from outside, seed excepted. */
-const layered = ['transfers', 'assistant', 'knowledge', 'conversations', 'support', 'identity'];
+/** Verticals already split into layers (7b, 7c, 7d.1-7d.5): index-only from outside, seed excepted. */
+const layered = [
+  'transfers',
+  'assistant',
+  'knowledge',
+  'conversations',
+  'support',
+  'identity',
+  'accounts',
+];
 /** The layered verticals whose infrastructure/ the seed may import (`insertIntent`, `insertConversation`, `insertMessage`, `insertIncident`). */
 const seedInfrastructure = ['transfers', 'conversations', 'support'];
 const frozenShims = (depth) => ({

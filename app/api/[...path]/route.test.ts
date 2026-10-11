@@ -540,6 +540,85 @@ describe('GET /api/dashboard', () => {
     assert.deepEqual(result.body, { incidents: list.body });
   });
 
+  it('should answer a customer with exactly the five dashboard sections in order', async () => {
+    // Arrange
+    // Act
+    const result = await api('GET', 'dashboard', { as: customers.lucia });
+    // Assert
+    assert.equal(result.status, 200);
+    assert.deepEqual(Object.keys(result.body), [
+      'accounts',
+      'movements',
+      'contacts',
+      'approvals',
+      'pendingTransfers',
+    ]);
+  });
+
+  it('should give a customer only the movements of their own accounts', async () => {
+    // Arrange
+    const own = new Set<string>([accounts.lucia, accounts.luciaSavings]);
+    // Act
+    const result = await api('GET', 'dashboard', { as: customers.lucia });
+    // Assert
+    assert.ok(result.body.movements.length > 0);
+    assert.ok(result.body.movements.every((m: any) => own.has(m.accountId)));
+  });
+
+  it('should show each customer only their own live approvals', async () => {
+    // Arrange
+    const proposal = await api('POST', 'actions', {
+      as: customers.bruno,
+      body: {
+        name: 'transfer_money',
+        arguments: transferInputFactory.build({
+          fromAccountId: accounts.bruno,
+          toAccountId: accounts.lucia,
+        }),
+      },
+    });
+    // Act
+    const lucia = await api('GET', 'dashboard', { as: customers.lucia });
+    const bruno = await api('GET', 'dashboard', { as: customers.bruno });
+    // Assert
+    assert.equal(proposal.body.status, 'requires_confirmation');
+    assert.deepEqual(lucia.body.approvals, []);
+    assert.deepEqual(
+      bruno.body.approvals.map((a: any) => a.id),
+      [proposal.body.approval.id],
+    );
+  });
+
+  it('should read the session customer even when the query names another customer', async () => {
+    // Arrange
+    persistIntent({ userId: customers.bruno, status: 'processing' });
+    // Act
+    const result = await api('GET', `dashboard?userId=${customers.bruno}&id=${customers.bruno}`, {
+      as: customers.lucia,
+    });
+    // Assert
+    assert.equal(result.status, 200);
+    assert.ok(result.body.accounts.every((a: any) => a.userId === customers.lucia));
+    assert.ok(result.body.contacts.every((c: any) => c.userId !== customers.lucia));
+    assert.deepEqual(result.body.pendingTransfers, []);
+  });
+
+  it('should give an operator the support cases without asking the bank', async () => {
+    // Arrange
+    await stopBank();
+    // Act
+    let result;
+    try {
+      result = await api('GET', 'dashboard', { as: operators.marta });
+    } finally {
+      await startBank();
+    }
+    // Assert
+    assert.equal(result.status, 200);
+    assert.deepEqual(Object.keys(result.body), ['incidents']);
+    assert.equal(result.body.incidents.length, counts.cases);
+  });
+
   it('should require a session', async () => {
     // Arrange
     // Act
