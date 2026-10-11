@@ -360,6 +360,8 @@ export default defineConfig([
     '.data/**',
     '.e2e/**',
     '.omc/**',
+    // Claude Code agent worktrees: full copies of the repo, linted in their own tree.
+    '.claude/**',
     'out/**',
     'build/**',
     'next-env.d.ts',

@@ -11,6 +11,8 @@ test-results/
 *.log
 next-env.d.ts
 .omc/
+.claude/worktrees/
+.claude/settings.local.json
 .e2e/
 .next-e2e/
 playwright-report/
