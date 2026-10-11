@@ -1,6 +1,6 @@
 # Part 1 evidence: before and after
 
-Reproducible before/after evidence for the Part 1 headline fixes (409a1f3, 99659a1, 149bd39, 77ff01b, c58fe72). "Before" is the starter commit 726b592, "after" is main at dc39816. Everything below was observed; nothing is inferred.
+Reproducible before/after evidence for the Part 1 headline fixes (409a1f3, 99659a1, 149bd39, 77ff01b, c58fe72). "Before" is the starter commit 726b592, "after" is main at dc39816 (the evidence was taken there; every "Main" column below means main at dc39816). Everything below was observed; nothing is inferred.
 
 ## Method
 
@@ -16,7 +16,7 @@ Reproducible before/after evidence for the Part 1 headline fixes (409a1f3, 99659
 
 Default bank profile: `intermittent`, seed 17, counter 0.
 
-| Step                                 | Starter (726b592)                                                                                  | Main                                                                                                                                |
+| Step                                 | Starter (726b592)                                                                                  | Main (dc39816)                                                                                                                      |
 | ------------------------------------ | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `POST /api/actions` `transfer_money` | 200 `{"status":"completed",...}`; executed at once. Bank operations 2 to 3; lucia 400750 to 399516 | 200 `{"status":"requires_confirmation","approval":{"id":...,"expiresAt":+10 min},"checks":[balance_after]}`; bank operations stay 2 |
 | `POST /api/approvals/:id/confirm`    | not applicable                                                                                     | 200 `completed`; operations 2 to 3                                                                                                  |
@@ -28,7 +28,9 @@ Default bank profile: `intermittent`, seed 17, counter 0.
 
 The profile loses the response of the first new transfer after it is set; the bank has committed it.
 
-| Step                                                  | Starter                                                                                                                                                                             | Main                                                                                                                            |
+**With the stock `lost-response` profile, main shows `replay`, not `unknown`:** the second attempt reuses the reference and the bank answers with the committed operation. `unknown` needs a response lost on every attempt, which is case 2b.
+
+| Step                                                  | Starter                                                                                                                                                                             | Main (dc39816)                                                                                                                  |
 | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | Transfer                                              | 200 `completed`. Attempt 1 committed, response lost; attempt 2 used a new reference and committed again. Operations 3 to 5 (two references), lucia 399516 to 397048 (debited twice) | `requires_confirmation`, then confirm returns 200 `completed` with `"replay":true`, one reference. Operations 3 to 4, one debit |
 | Retry (same intent on starter, same approval on main) | 200 `completed` with a new reference: third payment, operations 5 to 6, lucia 395814                                                                                                | 200 `completed`, `"replay":true`, answered from the record; operations stay 4                                                   |
@@ -37,7 +39,7 @@ The profile loses the response of the first new transfer after it is set; the ba
 
 With the stock profile the second attempt on main replays and succeeds, so `unknown` never appears. The proxy below forwards to the bank, then replaces the response of every `POST /v1/transfers` with a 504. The app's `BANK_URL` points at the proxy; snapshots read the bank directly. The proxy is an ad hoc script kept outside the repo.
 
-| Step   | Starter                                                                                                                                  | Main                                                                                                                                                                                                                                                     |
+| Step   | Starter                                                                                                                                  | Main (dc39816)                                                                                                                                                                                                                                           |
 | ------ | ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Result | 200 `{"status":"failed","error":"Upstream request timed out"}`; intent stored `failed`. Operations 6 to 8, two references both committed | confirm returns 200 `{"status":"unknown","error":"The bank did not confirm this transfer. It will be checked with the bank before any retry."}`; intent `unknown`. One reference reused on both attempts (the proxy logged two drops). Operations 4 to 5 |
 | Retry  | not run                                                                                                                                  | confirm returns 200 `completed`, `"replay":true`; intent goes `unknown` to `completed`, reconciled via `GET /v1/operations/:reference`, no new `POST` through the proxy. Operations stay 5                                                               |
@@ -46,7 +48,7 @@ With the stock profile the second attempt on main replays and succeeds, so `unkn
 
 `intent-historic-lucia` (the bank holds `ref-historic-lucia`, 8500, "Team dinner"):
 
-| Starter        | Main                                                        |
+| Starter        | Main (dc39816)                                              |
 | -------------- | ----------------------------------------------------------- |
 | stays `failed` | `completed` after one `GET /api/dashboard` (reconciliation) |
 
