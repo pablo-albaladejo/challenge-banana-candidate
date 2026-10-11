@@ -715,6 +715,12 @@ carries `extractedBy: 'regex'`, and the UI says so.
 
 These are the reasons the operator, not the scanner, is accountable for the final text (§4.A.9).
 
+**Known limits (review 3, not fixed).** The regex path can still give a verdict on a sentence it
+misreads: a hedge or conditional later in the sentence, after the matched phrase; a negative word
+outside the list ("nothing", "none", "hardly"); a fee or balance written beside a reference; a
+qualified noun ("previous", "other", "card payment"); and reported speech. The model path
+(commit 6) and the oracle are the mitigation; a positive clause template is the planned fix.
+
 #### 4.A.6 Steps 4 and 5 — findings, procedures and the one writing call
 
 **Findings (`case-findings.ts`):**
